@@ -8,294 +8,391 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Solitaire">
 <meta name="theme-color" content="#0A0E1C">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Klondike sans publicité, hors ligne.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
 <title>Solitaire</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
+/* =========================================================================
+   Solitaire — feuille de style
+   Contraintes iPhone tenues a l'oeil tout du long :
+   - aucun filter:blur() anime, c'est le pire cout GPU sur iOS
+   - backdrop-filter reserve a de petites surfaces, jamais au plateau
+   - will-change pose seulement pendant le geste, pas sur 52 cartes en continu
+   - fond en degrades peints une fois, strictement immobile sur mobile
+   ========================================================================= */
 :root{
-  --ui:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter',system-ui,sans-serif;
-  --round:ui-rounded,-apple-system,'SF Pro Rounded','Nunito',system-ui,sans-serif;
-  --ink:#1C1C1E;
-  --red:#FF3B30;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,"Segoe UI",Roboto,sans-serif;
+  --round:ui-rounded,-apple-system,"SF Pro Rounded",system-ui,"Segoe UI",Roboto,sans-serif;
+  --ink:#17181C;
+  --red:#E23A2E;
   --cw:96px; --ch:136px;
-  --radius:calc(var(--cw) * .105);
-  /* theme: aurore */
-  --bg:#0A0E1C;
-  --blob1:#6B4BFF; --blob2:#00A8E8; --blob3:#FF4D9D;
-  --o1:.55; --o2:.42; --o3:.30;
+  --radius:calc(var(--cw) * .11);
+  --hair:rgba(255,255,255,.14);
+  --vign:118px;   /* hauteur du fondu haut et bas : garantit des bords = --bg */
+
+  /* theme : aurore */
+  --bg-rgb:10,14,28;
+  --g1:107,75,255;  --g2:0,168,232;  --g3:255,77,157;
+  --o1:.50; --o2:.40; --o3:.28;
   --back1:#7A5CFF; --back2:#3B7BFF; --back3:#25C2F0;
   --accent:#0A84FF;
 }
 [data-theme="minuit"]{
-  --bg:#050814;
-  --blob1:#1E3A8A; --blob2:#0E7490; --blob3:#4C1D95;
-  --o1:.62; --o2:.46; --o3:.42;
+  --bg-rgb:5,8,20;
+  --g1:30,58,138; --g2:14,116,144; --g3:76,29,149;
+  --o1:.60; --o2:.46; --o3:.40;
   --back1:#2B4EA8; --back2:#1E7FA8; --back3:#3AC0C8;
   --accent:#3B82F6;
 }
 [data-theme="menthe"]{
-  --bg:#04140F;
-  --blob1:#0FA36B; --blob2:#12B5C9; --blob3:#7BD389;
-  --o1:.48; --o2:.40; --o3:.26;
+  --bg-rgb:4,20,15;
+  --g1:15,163,107; --g2:18,181,201; --g3:123,211,137;
+  --o1:.46; --o2:.38; --o3:.24;
   --back1:#0E9E76; --back2:#12B0A6; --back3:#6FD6A6;
   --accent:#30D158;
 }
 [data-theme="crepuscule"]{
-  --bg:#170A12;
-  --blob1:#F0592B; --blob2:#C0298C; --blob3:#FFB347;
-  --o1:.46; --o2:.40; --o3:.28;
+  --bg-rgb:23,10,18;
+  --g1:240,89,43; --g2:192,41,140; --g3:255,179,71;
+  --o1:.44; --o2:.38; --o3:.26;
   --back1:#F0603C; --back2:#D6338C; --back3:#FFAE4D;
   --accent:#FF9F0A;
 }
 [data-theme="ardoise"]{
-  --bg:#0C0D10;
-  --blob1:#3A4152; --blob2:#5A6478; --blob3:#8B94A8;
-  --o1:.60; --o2:.44; --o3:.24;
+  --bg-rgb:12,13,16;
+  --g1:58,65,82; --g2:90,100,120; --g3:139,148,168;
+  --o1:.58; --o2:.42; --o3:.22;
   --back1:#4A5264; --back2:#6B7488; --back3:#98A2B6;
   --accent:#8E9BB3;
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
-html{height:100%}
+html{height:100%;background:rgb(var(--bg-rgb))}
 body{
   position:fixed;inset:0;
-  font-family:var(--ui);color:#fff;background:var(--bg);
+  font-family:var(--ui);font-size:16px;color:#fff;
+  background:rgb(var(--bg-rgb));
   overflow:hidden;overscroll-behavior:none;
   display:flex;flex-direction:column;
   -webkit-font-smoothing:antialiased;
   -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
-  transition:background .5s ease;
+  user-select:none;-webkit-user-select:none;
+  transition:background .45s ease;
 }
 
-/* ---------- ambient backdrop ---------- */
-.blob{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0;
-      transition:background .6s ease, opacity .6s ease}
-.b1{width:60vw;height:60vw;left:-14vw;top:-22vw;background:var(--blob1);opacity:var(--o1)}
-.b2{width:52vw;height:52vw;right:-12vw;top:-8vw;background:var(--blob2);opacity:var(--o2)}
-.b3{width:56vw;height:56vw;left:24vw;bottom:-30vw;background:var(--blob3);opacity:var(--o3)}
-@keyframes drift{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(4vw,3vh,0) scale(1.08)}}
-.blob{animation:drift 26s ease-in-out infinite}
-.b2{animation-duration:34s;animation-direction:reverse}
-.b3{animation-duration:41s}
+/* ---------- fond ambiant ---------------------------------------------------
+   Trois halos en radial-gradient, zero filter. Un fondu vertical ramene les
+   130 premiers et derniers pixels exactement a --bg : la barre d'etat et la
+   barre d'accueil de l'iPhone tombent donc sur la meme couleur que
+   <meta name="theme-color">, plus de lisere visible en haut ni en bas.
+   -------------------------------------------------------------------------- */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:rgb(var(--bg-rgb));transition:background .45s ease}
+.bg i{
+  position:absolute;inset:-14%;display:block;
+  background:
+    radial-gradient(72% 52% at 16% 20%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 72%),
+    radial-gradient(64% 46% at 88% 12%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 70%),
+    radial-gradient(78% 54% at 56% 94%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 72%);
+  transition:background .45s ease;
+}
+.bg::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,
+    rgb(var(--bg-rgb)) 0,
+    rgba(var(--bg-rgb),0) var(--vign),
+    rgba(var(--bg-rgb),0) calc(100% - var(--vign)),
+    rgb(var(--bg-rgb)) 100%);
+}
+/* La derive ne tourne que sur pointeur fin, donc desktop. Sur iPhone le fond
+   est strictement immobile, ce qui rend les backdrop-filter quasi gratuits. */
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+  .bg i{will-change:transform;animation:drift 48s ease-in-out infinite}
+}
+@keyframes drift{
+  0%,100%{transform:translate3d(0,0,0) scale(1)}
+  50%{transform:translate3d(2.2%,1.8%,0) scale(1.04)}
+}
 
-/* ---------- glass HUD ---------- */
+/* ---------- barre du haut ---------- */
 .hud{
   position:relative;z-index:3;flex:0 0 auto;
-  display:flex;align-items:center;gap:12px;
-  margin:calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
-  padding:9px 10px 9px 17px;border-radius:24px;
-  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);
-  backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 10px 34px rgba(0,0,0,.28);
+  display:flex;align-items:center;gap:10px;
+  margin:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
 }
-.brand{display:flex;align-items:center;gap:9px;flex:0 0 auto}
-.brand svg{width:17px;height:17px;fill:#fff;opacity:.92}
-.brand b{font-size:17px;font-weight:600;letter-spacing:-.02em}
-.tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:9px;flex:0 0 auto;padding-left:2px}
+.brand svg{width:16px;height:16px;fill:#fff;opacity:.9}
+.brand b{font-size:16.5px;font-weight:600;letter-spacing:-.02em;opacity:.95}
+
+/* Ni la jauge ni le dock ne portent de backdrop-filter : ils reposent sur la
+   partie pleine du fond, le flou n'y produisait rien de visible et coûtait une
+   passe GPU chacun. Sept passes en moins par image sur iPhone. */
+.gauge{
+  margin-left:auto;display:flex;align-items:stretch;
+  padding:5px 4px;border-radius:14px;
+  background:rgba(255,255,255,.1);border:1px solid var(--hair);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16);
+}
+.gauge div{padding:0 12px;text-align:center;min-width:60px}
+.gauge div + div{border-left:1px solid rgba(255,255,255,.12)}
+.gauge b{display:block;font-family:var(--round);font-size:16px;font-weight:700;
+         letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
+.gauge i{display:block;font-style:normal;font-size:9.5px;font-weight:500;
+         letter-spacing:.02em;color:rgba(255,255,255,.5);text-transform:uppercase}
+
+/* ---------- boutons ---------- */
 .btn{
-  font-family:var(--ui);font-size:13px;font-weight:590;letter-spacing:-.01em;color:#fff;
-  padding:9px 16px;border-radius:999px;cursor:pointer;
-  background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);
-  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.24), 0 4px 14px rgba(0,0,0,.18);
-  transition:transform .22s cubic-bezier(.34,1.5,.64,1), background .2s, opacity .2s;
+  font-family:var(--ui);font-size:13.5px;font-weight:590;letter-spacing:-.01em;color:#fff;
+  padding:9px 16px;border-radius:999px;cursor:pointer;touch-action:manipulation;
+  background:rgba(255,255,255,.11);border:1px solid var(--hair);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2);
+  transition:transform .2s cubic-bezier(.34,1.4,.64,1), background .18s, opacity .18s;
   white-space:nowrap;
 }
-.btn:hover{background:rgba(255,255,255,.19)}
-.btn:active{transform:scale(.93)}
+.btn:active{transform:scale(.94)}
 .btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
-.btn.primary{background:color-mix(in srgb, var(--accent) 88%, transparent);border-color:rgba(255,255,255,.3)}
-.btn.go{background:rgba(48,209,88,.9);border-color:rgba(255,255,255,.3)}
-.btn.ico{padding:9px;width:36px;height:36px;display:grid;place-items:center}
-.btn.ico svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.btn[hidden]{display:none}
-.btn:disabled{opacity:.35;cursor:default;transform:none}
-.btn:disabled:hover{background:rgba(255,255,255,.11)}
+.btn.primary{background:var(--accent);border-color:rgba(255,255,255,.26)}
+.btn.ico{padding:0;width:36px;height:36px;flex:0 0 auto;display:grid;place-items:center;border-radius:12px;
+         background:rgba(255,255,255,.1)}
+.btn.ico svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:1.7;
+             stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.btn:disabled{opacity:.32;cursor:default;transform:none}
+@media (hover:hover){
+  .btn:hover:not(:disabled){background:rgba(255,255,255,.18)}
+  .btn.primary:hover{filter:brightness(1.1)}
+}
 
-.stats{display:flex;gap:8px;margin-left:auto;flex:0 0 auto}
-.stat{min-width:72px;padding:6px 13px;border-radius:16px;text-align:center;
-      background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.10)}
-.stat b{display:block;font-family:var(--round);font-size:17px;font-weight:700;
-        letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15}
-.stat i{display:block;font-style:normal;font-size:10px;font-weight:500;color:rgba(255,255,255,.55)}
-
-/* ---------- table ---------- */
+/* ---------- plateau ---------- */
 .table{
   position:relative;z-index:2;flex:1 1 auto;min-height:0;
-  margin:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
-  padding:20px;border-radius:30px;
-  background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);
-  backdrop-filter:blur(34px) saturate(160%);-webkit-backdrop-filter:blur(34px) saturate(160%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 24px 60px rgba(0,0,0,.32);
+  margin:10px calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left));
+  padding:6px;
 }
-.board{position:relative;height:100%;width:100%;max-width:1040px;margin:0 auto;
-       touch-action:none;user-select:none;-webkit-user-select:none}
+.board{position:relative;height:100%;width:100%;max-width:1060px;margin:0 auto;
+       touch-action:none;contain:layout style}
 
-/* ---------- slots ---------- */
+/* ---------- emplacements ---------- */
 .slot{
   position:absolute;top:0;left:0;width:var(--cw);height:var(--ch);border-radius:var(--radius);
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.11);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), inset 0 -8px 24px rgba(0,0,0,.10);
-  transition:background .18s, box-shadow .18s, border-color .18s;
+  background:rgba(255,255,255,.045);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+  transition:background .16s, box-shadow .16s;
 }
-.slot.lit{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.6);
-          box-shadow:0 0 0 2px rgba(255,255,255,.38), 0 0 34px rgba(120,190,255,.5)}
+.slot.lit{background:rgba(255,255,255,.17);
+          box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.65), 0 0 26px rgba(150,200,255,.42)}
+.slot.hint{animation:hintslot 1.2s ease-in-out 2}
+@keyframes hintslot{
+  0%,100%{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  50%{box-shadow:inset 0 0 0 2px rgba(255,255,255,.8), 0 0 30px rgba(150,200,255,.5)}
+}
 .slot.stock{cursor:pointer}
-.slot .recycle{position:absolute;inset:0;margin:auto;width:26%;height:26%;opacity:0;transition:opacity .2s}
-.slot.stock.empty .recycle{opacity:.55}
-.slot.stock.empty:hover .recycle{opacity:1}
+.slot .recycle{position:absolute;inset:0;margin:auto;width:24%;height:24%;opacity:0;transition:opacity .2s}
+.slot.stock.empty .recycle{opacity:.5}
 
-/* ---------- cards ---------- */
+/* ---------- cartes ---------- */
 .card{position:absolute;top:0;left:0;width:var(--cw);height:var(--ch);
-      transition:transform .32s cubic-bezier(.22,1,.36,1);will-change:transform}
-.board.noanim .card{transition:none!important}
+      transition:transform .3s cubic-bezier(.22,1,.36,1)}
+.board.noanim .card,.board.noanim .card .inner{transition:none!important}
 .card .inner{position:absolute;inset:0;transform-style:preserve-3d;
-             transition:transform .38s cubic-bezier(.4,.05,.2,1);border-radius:var(--radius)}
+             transition:transform .34s cubic-bezier(.4,.05,.2,1);border-radius:var(--radius)}
 .card.down .inner{transform:rotateY(180deg)}
 .face,.back{position:absolute;inset:0;border-radius:var(--radius);
             backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;
-            transition:opacity 0s linear .19s}
-/* Safari ignores backface-visibility in some stacking contexts, so the face and
-   the back are also swapped explicitly halfway through the flip. */
+            transition:opacity 0s linear .17s}
+/* Safari perd la backface dans certains contextes d'empilement : face et dos
+   sont donc aussi echanges explicitement a mi-parcours du retournement. */
 .card.down .face{opacity:0}
 .card:not(.down) .back{opacity:0}
 .face{transform:rotateY(0deg) translateZ(.6px);
-      background:linear-gradient(180deg,#FFFFFF 0%,#F4F5F8 100%);color:var(--ink);
-      box-shadow:0 1px 1px rgba(0,0,0,.10), 0 6px 16px rgba(0,0,0,.22), 0 18px 38px rgba(0,0,0,.16)}
+      background:linear-gradient(178deg,#FFFFFF 0%,#F1F2F6 100%);color:var(--ink);
+      box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
 .face.red{color:var(--red)}
-.face::after{content:'';position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(148deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 42%)}
+.face::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(150deg,rgba(255,255,255,.6) 0%,rgba(255,255,255,0) 40%)}
 .back{transform:rotateY(180deg) translateZ(.6px);
   background:linear-gradient(150deg,var(--back1) 0%,var(--back2) 52%,var(--back3) 100%);
-  box-shadow:0 1px 1px rgba(0,0,0,.10), 0 6px 16px rgba(0,0,0,.22), 0 18px 38px rgba(0,0,0,.16)}
-.back::after{content:'';position:absolute;inset:7%;border-radius:calc(var(--radius) * .72);
-  border:1px solid rgba(255,255,255,.34);
-  background:linear-gradient(160deg,rgba(255,255,255,.26) 0%,rgba(255,255,255,0) 55%)}
-.back::before{content:'';position:absolute;inset:0;margin:auto;width:26%;aspect-ratio:1;border-radius:50%;
-  background:rgba(255,255,255,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 2px 10px rgba(0,0,0,.14)}
+  box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
+.back::after{content:"";position:absolute;inset:7%;border-radius:calc(var(--radius) * .7);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.3);
+  background:linear-gradient(160deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 58%)}
+.back::before{content:"";position:absolute;inset:0;margin:auto;width:24%;aspect-ratio:1;border-radius:50%;
+  background:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.55)}
 
-.idx{position:absolute;top:5.5%;left:8%;display:flex;flex-direction:row;align-items:center;
-     gap:calc(var(--cw) * .055);z-index:1}
-.rk{font-family:var(--round);font-weight:700;font-size:calc(var(--cw) * .30);
-    line-height:.9;letter-spacing:-.03em}
-.rk.ten{font-size:calc(var(--cw) * .255)}
-.idx svg{width:calc(var(--cw) * .17);height:calc(var(--cw) * .17);fill:currentColor;
-         margin-top:calc(var(--cw) * .012)}
-.hero{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);
-      width:calc(var(--cw) * .40);height:calc(var(--cw) * .40);fill:currentColor;z-index:1}
+/* index et figure */
+.idx{position:absolute;top:5%;left:7.5%;display:flex;align-items:center;
+     gap:calc(var(--cw) * .05);z-index:1}
+.rk{font-family:var(--round);font-weight:700;font-size:calc(var(--cw) * .315);
+    line-height:.88;letter-spacing:-.035em}
+.rk.ten{font-size:calc(var(--cw) * .265);letter-spacing:-.055em}
+.idx svg{width:calc(var(--cw) * .175);height:calc(var(--cw) * .175);fill:currentColor;
+         margin-top:calc(var(--cw) * .01)}
+.hero{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);
+      width:calc(var(--cw) * .40);height:calc(var(--cw) * .40);fill:currentColor;z-index:1;opacity:.92}
+.hero.ace{width:calc(var(--cw) * .54);height:calc(var(--cw) * .54);opacity:.95}
+.mono{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);z-index:1;
+      font-family:var(--round);font-weight:700;font-size:calc(var(--cw) * .50);
+      line-height:1;letter-spacing:-.05em;opacity:.88}
 
 .card.pickable{cursor:grab}
-.card.drag{transition:none;cursor:grabbing}
-.card.drag .face{box-shadow:0 2px 4px rgba(0,0,0,.18), 0 30px 54px rgba(0,0,0,.42)}
-.card.fly{transition:none}
+.card.drag{transition:none;cursor:grabbing;will-change:transform}
+.card.drag .face,.card.drag .back{box-shadow:0 2px 6px rgba(0,0,0,.2), 0 26px 46px rgba(0,0,0,.4)}
+.card.fly{transition:none;will-change:transform}
+.card.hinted .face{animation:hintcard 1.2s ease-in-out 2}
+@keyframes hintcard{
+  0%,100%{box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
+  50%{box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 10px 28px rgba(0,0,0,.3)}
+}
 
-/* ---------- sheets ---------- */
-.scrim{position:fixed;inset:0;z-index:500;background:rgba(4,6,14,.5);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  opacity:0;pointer-events:none;transition:opacity .3s}
+/* ---------- dock du bas ---------- */
+.dock{
+  position:relative;z-index:3;flex:0 0 auto;
+  display:flex;gap:7px;justify-content:center;align-items:stretch;
+  margin:8px calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
+  padding-bottom:calc(9px + env(safe-area-inset-bottom));
+}
+.dk{
+  flex:1 1 0;min-width:0;max-width:132px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  padding:9px 4px 8px;border-radius:17px;cursor:pointer;touch-action:manipulation;
+  font-family:var(--ui);color:#fff;
+  background:rgba(255,255,255,.1);border:1px solid var(--hair);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16);
+  transition:transform .2s cubic-bezier(.34,1.4,.64,1), background .18s, opacity .18s;
+}
+.dk svg{width:19px;height:19px;fill:none;stroke:#fff;stroke-width:1.7;
+        stroke-linecap:round;stroke-linejoin:round}
+.dk span{font-size:10.5px;font-weight:590;letter-spacing:-.005em;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.dk:active{transform:scale(.95)}
+.dk:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.dk:disabled{opacity:.3;cursor:default;transform:none}
+.dk.accent{background:var(--accent);border-color:rgba(255,255,255,.24)}
+.dk.armed{background:rgba(255,105,97,.34);border-color:rgba(255,140,130,.5)}
+.dk.done svg{stroke:#30D158}
+@media (hover:hover){ .dk:hover:not(:disabled){background:rgba(255,255,255,.17)} }
+
+.finish{
+  position:absolute;left:50%;bottom:calc(100% + 8px);z-index:4;
+  transform:translate(-50%,10px);opacity:0;pointer-events:none;
+  display:flex;align-items:center;gap:8px;
+  padding:10px 20px;border-radius:999px;
+  font-family:var(--ui);font-size:13.5px;font-weight:600;letter-spacing:-.01em;color:#06210E;
+  background:linear-gradient(180deg,#5FE882,#30D158);border:0;cursor:pointer;
+  touch-action:manipulation;
+  box-shadow:0 8px 26px rgba(48,209,88,.36);
+  transition:.32s cubic-bezier(.22,1.2,.36,1);
+}
+.finish svg{width:16px;height:16px;fill:none;stroke:#06210E;stroke-width:2.2;
+            stroke-linecap:round;stroke-linejoin:round}
+.finish.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+.finish.show:active{transform:translate(-50%,0) scale(.95)}
+
+/* ---------- feuilles ---------- */
+.scrim{position:fixed;inset:0;z-index:500;background:rgba(4,6,14,.52);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  opacity:0;pointer-events:none;transition:opacity .28s}
 .scrim.show{opacity:1;pointer-events:auto}
+.scrim.light{background:rgba(4,6,14,.3);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .sheet{
   position:fixed;z-index:501;left:50%;top:50%;
-  transform:translate(-50%,-46%) scale(.95);
-  width:min(430px,calc(100vw - 28px));max-height:min(84vh,720px);overflow:auto;
-  padding:22px;border-radius:28px;
-  background:rgba(18,20,34,.72);border:1px solid rgba(255,255,255,.20);
-  backdrop-filter:blur(38px) saturate(180%);-webkit-backdrop-filter:blur(38px) saturate(180%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.26), 0 34px 80px rgba(0,0,0,.55);
-  opacity:0;pointer-events:none;transition:.36s cubic-bezier(.22,1.2,.36,1);
+  transform:translate(-50%,-46%) scale(.96);
+  width:min(420px,calc(100vw - 28px));
+  max-height:min(82vh,700px);overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:22px;padding-bottom:calc(22px + env(safe-area-inset-bottom));
+  border-radius:26px;
+  background:rgba(17,19,32,.86);border:1px solid rgba(255,255,255,.16);
+  backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2), 0 30px 70px rgba(0,0,0,.55);
+  opacity:0;pointer-events:none;transition:.32s cubic-bezier(.22,1.2,.36,1);
 }
 .sheet.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
-.sheet h3{font-size:20px;font-weight:640;letter-spacing:-.02em;margin-bottom:16px}
-.sheet .close{position:absolute;top:16px;right:16px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px}
-.cell{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.07);
-      border:1px solid rgba(255,255,255,.10)}
-.cell b{display:block;font-family:var(--round);font-size:22px;font-weight:700;letter-spacing:-.03em;
-        font-variant-numeric:tabular-nums;line-height:1.1}
-.cell i{display:block;font-style:normal;font-size:11px;color:rgba(255,255,255,.55);margin-top:2px}
+/* Une feuille fermée garde sinon sa passe de flou allouée en permanence. */
+.sheet:not(.show),.scrim:not(.show){backdrop-filter:none;-webkit-backdrop-filter:none}
+.sheet h3{font-size:20px;font-weight:640;letter-spacing:-.025em;margin-bottom:4px;padding-right:44px}
+.sheet .sub{font-size:13px;color:rgba(255,255,255,.5);margin-bottom:18px}
+.sheet .close{position:absolute;top:15px;right:15px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.cell{padding:12px 14px;border-radius:15px;background:rgba(255,255,255,.06);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.cell b{display:block;font-family:var(--round);font-size:21px;font-weight:700;letter-spacing:-.035em;
+        font-variant-numeric:tabular-nums;line-height:1.15}
+.cell i{display:block;font-style:normal;font-size:11px;color:rgba(255,255,255,.52);margin-top:2px}
 .cell.wide{grid-column:1 / -1}
 .row{display:flex;align-items:center;justify-content:space-between;gap:14px;
-     padding:12px 2px;border-top:1px solid rgba(255,255,255,.10)}
+     padding:13px 2px;border-top:1px solid rgba(255,255,255,.09)}
 .row:first-of-type{border-top:0}
-.row label{font-size:14px;font-weight:500}
-.row label small{display:block;font-size:11.5px;font-weight:400;color:rgba(255,255,255,.5);margin-top:2px}
-.seg{display:flex;background:rgba(0,0,0,.26);border-radius:999px;padding:3px;
-     border:1px solid rgba(255,255,255,.10);flex:0 0 auto}
-.seg button{font-family:var(--ui);font-size:12.5px;font-weight:590;color:rgba(255,255,255,.62);
+.row label{font-size:14.5px;font-weight:500}
+.row label small{display:block;font-size:11.5px;font-weight:400;color:rgba(255,255,255,.48);margin-top:3px}
+.seg{display:flex;background:rgba(0,0,0,.3);border-radius:999px;padding:3px;
+     box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);flex:0 0 auto}
+.seg button{font-family:var(--ui);font-size:12.5px;font-weight:590;color:rgba(255,255,255,.6);
   background:transparent;border:0;padding:6px 14px;border-radius:999px;cursor:pointer;
-  transition:.2s;white-space:nowrap}
-.seg button.on{background:rgba(255,255,255,.92);color:#14161F;
-  box-shadow:0 1px 4px rgba(0,0,0,.25)}
-.sw{width:50px;height:30px;border-radius:999px;background:rgba(255,255,255,.18);
-  border:1px solid rgba(255,255,255,.14);position:relative;cursor:pointer;transition:.25s;flex:0 0 auto}
-.sw::after{content:'';position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;
-  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:.25s cubic-bezier(.34,1.5,.64,1)}
-.sw.on{background:color-mix(in srgb, var(--accent) 90%, transparent)}
+  touch-action:manipulation;transition:.18s;white-space:nowrap}
+.seg button.on{background:#fff;color:#14161F;box-shadow:0 1px 3px rgba(0,0,0,.28)}
+.sw{width:50px;height:30px;border-radius:999px;background:rgba(255,255,255,.16);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+  position:relative;cursor:pointer;transition:.22s;flex:0 0 auto;touch-action:manipulation}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:26px;height:26px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:.24s cubic-bezier(.34,1.5,.64,1)}
+.sw.on{background:var(--accent)}
 .sw.on::after{transform:translateX(20px)}
-.themes{display:flex;gap:9px;flex-wrap:wrap;padding:4px 0 12px}
-.th{width:44px;height:44px;border-radius:14px;cursor:pointer;border:2px solid rgba(255,255,255,.16);
-    transition:.2s;padding:0}
-.th:hover{transform:scale(1.06)}
-.th.on{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.22)}
-.note{font-size:12px;color:rgba(255,255,255,.5);line-height:1.5;margin-top:4px}
-.danger{color:#FF6961;border-color:rgba(255,105,97,.4);background:rgba(255,105,97,.12)}
-.danger:hover{background:rgba(255,105,97,.22)}
+.themes{display:flex;gap:10px;flex-wrap:wrap;padding:2px 0 10px}
+.th{width:46px;height:46px;border-radius:15px;cursor:pointer;padding:0;border:0;
+    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18);transition:.2s;touch-action:manipulation}
+.th.on{box-shadow:inset 0 0 0 2px #fff, 0 0 0 3px rgba(255,255,255,.18)}
+@media (hover:hover){ .th:hover{transform:scale(1.07)} }
+.note{font-size:12px;color:rgba(255,255,255,.45);line-height:1.55;margin-top:6px}
+.danger{color:#FF7A72;background:rgba(255,105,97,.14);border-color:rgba(255,105,97,.32)}
+@media (hover:hover){ .danger:hover{background:rgba(255,105,97,.24)} }
+.sheet .actions{display:flex;gap:9px;margin-top:18px}
+.sheet .actions .btn{flex:1 1 0;text-align:center;padding:12px 10px;font-size:14px}
 
-/* ---------- win ---------- */
-.won{
-  position:absolute;left:50%;top:14%;transform:translate(-50%,-16px) scale(.96);z-index:400;
-  display:flex;align-items:center;gap:22px;padding:20px 22px;border-radius:26px;
-  background:rgba(20,22,40,.62);border:1px solid rgba(255,255,255,.20);
-  backdrop-filter:blur(34px) saturate(180%);-webkit-backdrop-filter:blur(34px) saturate(180%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 28px 70px rgba(0,0,0,.5);
-  opacity:0;pointer-events:none;transition:.45s cubic-bezier(.22,1.2,.36,1);
-}
-.won.show{opacity:1;pointer-events:auto;transform:translate(-50%,0) scale(1)}
-.won h2{font-size:20px;font-weight:640;letter-spacing:-.02em}
-.won p{margin-top:4px;font-size:13px;color:rgba(255,255,255,.6);font-variant-numeric:tabular-nums}
-
+/* ---------- toast ---------- */
 .toast{
-  position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));z-index:600;
-  transform:translate(-50%,14px);opacity:0;pointer-events:none;
-  padding:11px 20px;border-radius:999px;font-size:13.5px;font-weight:500;
-  background:rgba(18,20,34,.82);border:1px solid rgba(255,255,255,.18);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-  box-shadow:0 14px 40px rgba(0,0,0,.4);transition:.3s cubic-bezier(.22,1.2,.36,1);
+  position:fixed;left:50%;bottom:calc(124px + env(safe-area-inset-bottom));z-index:600;
+  transform:translate(-50%,12px);opacity:0;pointer-events:none;
+  max-width:calc(100vw - 40px);text-align:center;
+  padding:11px 20px;border-radius:999px;font-size:13.5px;font-weight:500;line-height:1.35;
+  background:rgba(20,22,36,.9);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14), 0 12px 34px rgba(0,0,0,.42);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  transition:.26s cubic-bezier(.22,1.2,.36,1);
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
+/* Idem : aucun flou alloue tant que le message n'est pas a l'ecran. */
+.toast:not(.show){backdrop-filter:none;-webkit-backdrop-filter:none}
 
+/* ---------- adaptations ---------- */
 @media (max-width:760px){
-  .hud{flex-wrap:wrap;gap:8px;padding:9px 10px;border-radius:20px;
-       margin:calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left))}
+  .hud{margin-top:calc(6px + env(safe-area-inset-top));gap:8px}
   .brand b{display:none}
-  .brand{order:1}
-  .stats{order:2;margin-left:auto}
-  .tools{order:3;width:100%}
-  .btn{flex:1 1 auto;text-align:center;padding:8px 6px;font-size:11.5px}
-  .btn.ico{flex:0 0 auto}
-  .stat{min-width:58px;padding:5px 9px}
-  .stat b{font-size:15px}
-  .table{padding:6px 5px;border-radius:0;background:transparent;border:0;
-         backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;
-         margin:6px calc(5px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(5px + env(safe-area-inset-left))}
-  .won{flex-direction:column;text-align:center;width:84%;gap:14px}
+  .gauge div{min-width:52px;padding:0 10px}
+  .gauge b{font-size:15px}
+  .table{margin:8px calc(4px + env(safe-area-inset-right)) 0 calc(4px + env(safe-area-inset-left));padding:2px}
+  .dock{margin-left:calc(8px + env(safe-area-inset-left));margin-right:calc(8px + env(safe-area-inset-right));gap:6px}
+  .dk{border-radius:15px;padding:8px 3px 7px}
+  .dk span{font-size:10px}
+}
+@media (orientation:landscape) and (max-height:620px){
+  :root{--vign:78px}
+  .dk{flex-direction:row;gap:6px;padding:8px 6px}
+  .dk span{font-size:11px}
 }
 @media (prefers-reduced-motion:reduce){
-  .card,.card .inner,.won,.btn,.sheet,.scrim{transition-duration:.01ms!important}
+  .card,.card .inner,.btn,.dk,.sheet,.scrim,.finish,.toast{transition-duration:.01ms!important}
   .face,.back{transition-delay:0s!important}
-  .blob{animation:none}
+  .slot.hint,.card.hinted .face{animation:none}
 }
 </style>
 </head>
 <body>
 
-<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+<div class="bg" aria-hidden="true"><i></i></div>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <symbol id="sp-spades" viewBox="0 0 100 100">
     <path d="M50 5C50 5 17 30 11 47c-6 17 3 31 17 31 8 0 14-4 17-10 0 0-1 16-11 26h32c-10-10-11-26-11-26 3 6 9 10 17 10 14 0 23-14 17-31C83 30 50 5 50 5z"/>
   </symbol>
@@ -319,45 +416,68 @@ body{
     <path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1"/>
   </symbol>
   <symbol id="ic-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="ic-undo" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 3v4h4"/></symbol>
+  <symbol id="ic-bulb" viewBox="0 0 24 24">
+    <path d="M12 3a6 6 0 0 0-3.3 11v2.2h6.6V14A6 6 0 0 0 12 3zM9.6 20.4h4.8"/>
+  </symbol>
+  <symbol id="ic-deck" viewBox="0 0 24 24">
+    <rect x="8" y="4" width="11" height="15" rx="2.4"/><path d="M5.2 7.4v9.2a2.4 2.4 0 0 0 2.4 2.4"/>
+  </symbol>
+  <symbol id="ic-cal" viewBox="0 0 24 24">
+    <rect x="3.6" y="5.2" width="16.8" height="15.2" rx="3"/>
+    <path d="M3.6 10h16.8M8.4 3.4v3.4M15.6 3.4v3.4"/>
+  </symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 12.8l4.6 4.4L19 7"/></symbol>
 </svg>
 
 <header class="hud">
   <div class="brand"><svg viewBox="0 0 100 100"><use href="#sp-spades"/></svg><b>Solitaire</b></div>
-  <div class="tools">
-    <button class="btn primary" id="btn-new">Nouvelle</button>
-    <button class="btn" id="btn-daily">Défi du jour</button>
-    <button class="btn" id="btn-undo">Annuler</button>
-    <button class="btn go" id="btn-finish" hidden>Terminer</button>
-    <button class="btn ico" id="btn-stats" aria-label="Statistiques"><svg viewBox="0 0 24 24"><use href="#ic-chart"/></svg></button>
-    <button class="btn ico" id="btn-set" aria-label="Réglages"><svg viewBox="0 0 24 24"><use href="#ic-gear"/></svg></button>
+  <div class="gauge">
+    <div><b id="v-time" aria-label="Temps écoulé">0:00</b><i>Temps</i></div>
+    <div><b id="v-moves" aria-label="Coups joués">0</b><i>Coups</i></div>
   </div>
-  <div class="stats">
-    <div class="stat"><b id="v-time">0:00</b><i>Temps</i></div>
-    <div class="stat"><b id="v-moves">0</b><i>Coups</i></div>
-  </div>
+  <button class="btn ico" id="btn-stats" aria-label="Statistiques"><svg viewBox="0 0 24 24"><use href="#ic-chart"/></svg></button>
+  <button class="btn ico" id="btn-set" aria-label="Réglages"><svg viewBox="0 0 24 24"><use href="#ic-gear"/></svg></button>
 </header>
 
 <main class="table">
   <div class="board" id="board"></div>
-  <div class="won" id="won">
-    <div><h2 id="won-title">Gagné</h2><p id="won-stats"></p></div>
-    <button class="btn primary" id="btn-again">Rejouer</button>
-  </div>
 </main>
+
+<nav class="dock" aria-label="Actions">
+  <button class="finish" id="btn-finish"><svg viewBox="0 0 24 24"><use href="#ic-check"/></svg>Terminer la partie</button>
+  <button class="dk" id="btn-undo"><svg viewBox="0 0 24 24"><use href="#ic-undo"/></svg><span>Annuler</span></button>
+  <button class="dk" id="btn-hint"><svg viewBox="0 0 24 24"><use href="#ic-bulb"/></svg><span>Indice</span></button>
+  <button class="dk accent" id="btn-new"><svg viewBox="0 0 24 24"><use href="#ic-deck"/></svg><span>Nouvelle</span></button>
+  <button class="dk" id="btn-daily"><svg viewBox="0 0 24 24"><use href="#ic-cal"/></svg><span>Défi</span></button>
+</nav>
 
 <div class="scrim" id="scrim"></div>
 
-<section class="sheet" id="sheet-stats" role="dialog" aria-label="Statistiques">
+<section class="sheet" id="sheet-won" role="dialog" aria-modal="true" aria-label="Partie gagnée">
   <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
-  <h3>Statistiques</h3>
-  <div class="grid" id="stats-grid"></div>
-  <div class="cell wide" id="daily-cell"></div>
-  <div class="note" id="stats-note"></div>
+  <h3 id="won-title">Gagné</h3>
+  <p class="sub" id="won-sub"></p>
+  <div class="grid" id="won-grid"></div>
+  <div class="actions">
+    <button class="btn primary" id="btn-again">Rejouer</button>
+    <button class="btn" id="btn-won-stats">Statistiques</button>
+  </div>
 </section>
 
-<section class="sheet" id="sheet-set" role="dialog" aria-label="Réglages">
+<section class="sheet" id="sheet-stats" role="dialog" aria-modal="true" aria-label="Statistiques">
+  <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
+  <h3>Statistiques</h3>
+  <p class="sub">Tout reste sur cet appareil.</p>
+  <div class="grid" id="stats-grid"></div>
+  <div class="cell wide" id="daily-cell"></div>
+  <p class="note">Une partie abandonnée en cours de route compte comme une défaite et remet la série à zéro.</p>
+</section>
+
+<section class="sheet" id="sheet-set" role="dialog" aria-modal="true" aria-label="Réglages">
   <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
   <h3>Réglages</h3>
+  <p class="sub">Ajustez le jeu à votre main.</p>
   <div class="row">
     <label>Tirage<small>Une carte est plus facile</small></label>
     <div class="seg" id="seg-draw"><button data-v="1">1 carte</button><button data-v="3">3 cartes</button></div>
@@ -368,10 +488,14 @@ body{
   </div>
   <div class="row">
     <label>Vibrations<small>Retour haptique sur les poses</small></label>
-    <div class="sw" id="sw-haptic" role="switch" tabindex="0"></div>
+    <div class="sw" id="sw-haptic" role="switch" tabindex="0" aria-label="Vibrations"></div>
+  </div>
+  <div class="row">
+    <label>Éventail étalé<small>Occupe toute la hauteur de l'écran</small></label>
+    <div class="sw" id="sw-tall" role="switch" tabindex="0" aria-label="Éventail étalé"></div>
   </div>
   <div class="row" style="flex-direction:column;align-items:stretch">
-    <label style="margin-bottom:8px">Thème de table</label>
+    <label style="margin-bottom:10px">Thème de table</label>
     <div class="themes" id="themes"></div>
   </div>
   <div class="row">
@@ -379,20 +503,21 @@ body{
     <button class="btn danger" id="btn-reset">Effacer</button>
   </div>
   <p class="note" id="storage-note"></p>
+  <p class="note" id="version-note"></p>
 </section>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
 'use strict';
 
-/* ================= storage adapter =================
-   Works in three environments, in this order:
-   1. Claude artifact preview  -> window.storage (async key/value)
-   2. Browser / PWA / native wrapper -> localStorage
-   3. Anything else -> in-memory (session only)
-=================================================== */
+/* ================= stockage =================
+   Trois environnements, dans cet ordre :
+   1. aperçu Claude            -> window.storage (asynchrone)
+   2. navigateur, PWA, wrapper -> localStorage
+   3. le reste                 -> mémoire de session
+   =========================================== */
 const Store = (() => {
   const mem = {};
   const ws = (typeof window !== 'undefined' && window.storage
@@ -402,7 +527,7 @@ const Store = (() => {
     try { const k = '__probe'; window.localStorage.setItem(k, '1'); window.localStorage.removeItem(k); ls = window.localStorage; }
     catch (e) { ls = null; }
   }
-  const label = ws ? 'aperçu Claude (window.storage)' : ls ? 'stockage local du navigateur' : 'mémoire de session';
+  const label = ws ? 'aperçu Claude' : ls ? 'stockage local du navigateur' : 'mémoire de session';
   return {
     label,
     async get(key){
@@ -429,9 +554,9 @@ const Store = (() => {
     }
   };
 })();
-const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1' };
+const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1', seen:'sol.seen.v1' };
 
-/* ================= constants ================= */
+/* ================= constantes ================= */
 const SUITS = ['spades','hearts','diamonds','clubs'];
 const COLOR = ['b','r','r','b'];
 const RANKS = ['','A','2','3','4','5','6','7','8','9','10','V','D','R'];
@@ -447,15 +572,19 @@ const THEMES = [
 const board = document.getElementById('board');
 const el = id => document.getElementById(id);
 const cards = [], nodes = [], pos = [], slots = {};
+/* Cache des transformations déjà écrites : layout() est appelé très souvent
+   (chaque coup, chaque carte distribuée) et 52 écritures de style inutiles
+   par appel suffisent à faire tomber l'iPhone sous les 60 images/seconde. */
+const lastT = [], lastZ = [], lastDown = [];
 
 let S, history = [], dealt = new Set();
 let timer = null, seconds = 0, running = false, won = false;
 let isDaily = false, dayKey = null, G = {};
-let prefs = { draw:1, lefty:0, haptic:1, theme:'aurore' };
+let prefs = { draw:1, lefty:0, haptic:1, theme:'aurore', tall:1 };
 let stats = { played:0, won:0, streak:0, bestStreak:0, bestTime:0, bestMoves:0, daily:{} };
-let booted = false;
+let booted = false, stuckTold = false, dealing = false, dealGen = 0;
 
-/* ================= helpers ================= */
+/* ================= utilitaires ================= */
 const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
 const todayKey = () => {
   const d = new Date();
@@ -476,54 +605,65 @@ function haptic(kind){
   if (!prefs.haptic) return;
   if (typeof window.SolitaireHaptics === 'function'){ try { window.SolitaireHaptics(kind); } catch(e){} return; }
   if (navigator.vibrate){
-    try { navigator.vibrate(kind === 'win' ? [14,40,14,40,22] : kind === 'strong' ? 16 : 7); } catch(e){}
+    try { navigator.vibrate(kind === 'win' ? [14,40,14,40,22] : kind === 'strong' ? 15 : 7); } catch(e){}
   }
 }
 let toastT = null;
-function toast(msg){
+function toast(msg, ms){
   const t = el('toast');
   t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400);
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms || 2400);
 }
+const label = (btn, text) => { btn.querySelector('span').textContent = text; };
 
-/* ================= build ================= */
+/* ================= construction ================= */
 function buildCards(){
+  const frag = document.createDocumentFragment();
   for (let s = 0; s < 4; s++){
     for (let r = 1; r <= 13; r++){
       const id = s * 13 + (r - 1);
       cards[id] = { id, s, r };
-      const glyph = cls => `<svg class="${cls}" viewBox="0 0 100 100"><use href="#sp-${SUITS[s]}"/></svg>`;
+      const pip = cls => `<svg class="${cls}" viewBox="0 0 100 100"><use href="#sp-${SUITS[s]}"/></svg>`;
+      /* Figures : monogramme centré. As : grande enseigne. Nombres : enseigne
+         médiane. Lisible d'un coup d'oeil sans surcharger la carte. */
+      const middle = r >= 11 ? `<span class="mono">${RANKS[r]}</span>`
+                   : r === 1 ? pip('hero ace')
+                   : pip('hero');
       const n = document.createElement('div');
       n.className = 'card down';
       n.dataset.i = id;
       n.innerHTML =
         `<div class="inner">
            <div class="face ${COLOR[s] === 'r' ? 'red' : 'black'}">
-             <div class="idx"><span class="rk${r === 10 ? ' ten' : ''}">${RANKS[r]}</span>${glyph('')}</div>
-             ${glyph('hero')}
+             <div class="idx"><span class="rk${r === 10 ? ' ten' : ''}">${RANKS[r]}</span>${pip('')}</div>
+             ${middle}
            </div>
            <div class="back"></div>
          </div>`;
       nodes[id] = n;
-      board.appendChild(n);
+      lastDown[id] = true;
+      frag.appendChild(n);
     }
   }
+  board.appendChild(frag);
 }
 function buildSlots(){
+  const frag = document.createDocumentFragment();
   const make = (key, cls) => {
     const d = document.createElement('div');
     d.className = 'slot ' + cls;
     d.dataset.slot = key;
     if (key === 'stock') d.innerHTML = `<svg class="recycle" viewBox="0 0 24 24"><use href="#ic-recycle"/></svg>`;
-    board.appendChild(d);
+    frag.appendChild(d);
     slots[key] = d;
   };
   make('stock', 'stock');
   for (let k = 0; k < 4; k++) make('f' + k, 'found');
   for (let k = 0; k < 7; k++) make('t' + k, 'tab');
+  board.insertBefore(frag, board.firstChild);
 }
 
-/* ================= game state ================= */
+/* ================= état ================= */
 const blank = () => ({
   stock:[], waste:[], found:[[],[],[],[]], tab:[[],[],[],[],[],[],[]],
   up:new Array(52).fill(false), moves:0
@@ -558,10 +698,10 @@ function isSeq(g){
   return true;
 }
 
-/* ================= geometry ================= */
+/* ================= géométrie ================= */
 function geometry(){
   const W = board.clientWidth, H = board.clientHeight;
-  let cw = Math.min(W / 7.72, 128);
+  let cw = Math.min(W / 7.68, 132);
   let ch = cw * 1.42;
   if (ch * 2.8 > H){ cw *= H / (ch * 2.8); ch = cw * 1.42; }
   const gapX = cw * .12;
@@ -569,20 +709,29 @@ function geometry(){
   const ox = Math.max(0, (W - total) / 2);
   const colX = k => ox + k * (cw + gapX);
 
-  /* On a phone the 7 columns cap the card width, which leaves a lot of unused
-     height. Stretch the fan (and the gap under the top row) to fill it. */
-  const dUb = ch * .285, dDb = ch * .15;
-  const room = H - (ch + ch * .30);
-  const nominal = ch + 12 * dUb;
-  const fanScale = Math.max(.6, Math.min(2.3, room > 0 ? room / nominal : 1));
-  const gapY = ch * .30 * Math.max(1, Math.min(2, fanScale));
+  /* Sur téléphone les sept colonnes plafonnent la largeur des cartes, donc la
+     hauteur restante est généreuse. On la répartit dans cet ordre : d'abord
+     l'éventail, jusqu'à une limite qui garde une colonne de treize cartes
+     entière sans compression ; puis l'écart entre la rangée du haut et le
+     tableau ; le reste respire en bas. */
+  const dUmin = ch * .22, dUmax = ch * (prefs.tall ? .56 : .34);
+  const dD = ch * .13;
+  let gapY = ch * .30, dU = dUmin;
+  const rows = 7;                       /* colonne la plus longue à la donne */
+  let slack = H - (ch + gapY + ch + (rows - 1) * dU);
+  if (slack > 0){
+    dU = Math.min(dUmax, dU + slack * .62 / (rows - 1));
+    slack = H - (ch + gapY + ch + (rows - 1) * dU);
+    if (slack > 0) gapY = Math.min(ch * 1.6, gapY + slack * .5);
+  }
+  /* Une colonne de treize cartes doit rester dans le plateau. */
+  gapY = Math.min(gapY, Math.max(ch * .26, H - ch - 12 * dU - ch));
   const tabY = ch + gapY;
 
   const map = prefs.lefty
     ? { stock:6, waste:5, found:[0,1,2,3] }
     : { stock:0, waste:1, found:[3,4,5,6] };
-  G = { cw, ch, gapX, gapY, W, H, tabY, x: colX,
-        dU: dUb * fanScale, dD: dDb * fanScale,
+  G = { cw, ch, gapX, gapY, W, H, tabY, x: colX, dU, dD,
         sx: { stock: colX(map.stock), waste: colX(map.waste), found: map.found.map(colX) },
         wasteDir: prefs.lefty ? -1 : 1 };
   board.style.setProperty('--cw', cw + 'px');
@@ -592,12 +741,12 @@ function geometry(){
   at(slots.stock, G.sx.stock, 0);
   for (let k = 0; k < 4; k++) at(slots['f' + k], G.sx.found[k], 0);
   for (let k = 0; k < 7; k++) at(slots['t' + k], colX(k), G.tabY);
+  lastT.length = 0; lastZ.length = 0;   /* les positions changent : cache vidé */
 }
 function fanY(k){
   const p = S.tab[k];
-  const dU = G.dU, dD = G.dD;
   const step = [];
-  for (let i = 0; i < p.length; i++) step.push(i === 0 ? 0 : (S.up[p[i-1]] ? dU : dD));
+  for (let i = 0; i < p.length; i++) step.push(i === 0 ? 0 : (S.up[p[i-1]] ? G.dU : G.dD));
   const span = step.reduce((a, b) => a + b, 0);
   const room = Math.max(0, G.H - G.tabY - G.ch);
   const f = span > room ? room / span : 1;
@@ -606,9 +755,10 @@ function fanY(k){
   return out;
 }
 function put(id, x, y, z, extra){
+  const t = `translate3d(${x}px,${y}px,0)` + (extra || '');
   const n = nodes[id];
-  n.style.transform = `translate3d(${x}px,${y}px,0)` + (extra || '');
-  n.style.zIndex = z;
+  if (lastT[id] !== t){ n.style.transform = t; lastT[id] = t; }
+  if (lastZ[id] !== z){ n.style.zIndex = z; lastZ[id] = z; }
   pos[id] = { x, y };
 }
 function layout(){
@@ -629,8 +779,12 @@ function layout(){
   });
   for (let id = 0; id < 52; id++){
     if (!dealt.has(id)) put(id, G.sx.stock, 0, 900);
-    nodes[id].classList.toggle('down', !S.up[id]);
-    nodes[id].classList.toggle('pickable', S.up[id]);
+    const down = !S.up[id];
+    if (lastDown[id] !== down){
+      nodes[id].classList.toggle('down', down);
+      nodes[id].classList.toggle('pickable', !down);
+      lastDown[id] = down;
+    }
   }
   slots.stock.classList.toggle('empty', S.stock.length === 0);
 }
@@ -641,27 +795,26 @@ function relayout(){
   board.classList.remove('noanim');
 }
 
-/* ================= persistence ================= */
+/* ================= sauvegarde ================= */
 let saveT = null;
+const snapState = () => ({ S, seconds, draw: prefs.draw, isDaily, dayKey });
 function saveSoon(){
   clearTimeout(saveT);
-  saveT = setTimeout(() => {
-    if (!S || won) return;
-    Store.set(K.state, { S, seconds, draw: prefs.draw, isDaily, dayKey });
-  }, 450);
+  saveT = setTimeout(() => { if (S && !won) Store.set(K.state, snapState()); }, 450);
 }
 const saveStats = () => Store.set(K.stats, stats);
 const savePrefs = () => Store.set(K.prefs, prefs);
 
-/* ================= moves ================= */
+/* ================= coups ================= */
 const snapshot = () => JSON.stringify({
   stock:S.stock, waste:S.waste, found:S.found, tab:S.tab, up:S.up, moves:S.moves
 });
-function pushHistory(){ history.push(snapshot()); if (history.length > 250) history.shift(); }
+function pushHistory(){ history.push(snapshot()); if (history.length > 200) history.shift(); }
 
 function undo(){
   if (!history.length || won) return;
   S = JSON.parse(history.pop());
+  stuckTold = false;
   haptic(); layout(); update(); saveSoon();
 }
 function flipExposed(){
@@ -676,7 +829,7 @@ function move(group, target){
   S.moves++;
   flipExposed();
   haptic(target.type === 'found' ? 'strong' : 'light');
-  start(); layout(); update(); saveSoon(); checkWin();
+  start(); layout(); update(); saveSoon(); checkWin(); checkStuck();
 }
 function draw(){
   if (won) return;
@@ -713,10 +866,11 @@ function autoMove(id){
   if (empty >= 0 && !(loc.pile === 'tab' && loc.i === 0)) move(group, { type:'tab', k:empty });
 }
 
-/* ================= pointer ================= */
-let drag = null;
+/* ================= geste ================= */
+let drag = null, moveRaf = null, litKey = null;
+
 board.addEventListener('pointerdown', e => {
-  if (e.button || won || !S) return;
+  if (e.button || won || !S || dealing) return;
   const cardEl = e.target.closest('.card');
   if (!cardEl){
     const slotEl = e.target.closest('.slot');
@@ -732,75 +886,173 @@ board.addEventListener('pointerdown', e => {
   let group;
   if (loc.pile === 'tab'){ group = pile.slice(loc.i); if (!isSeq(group)) return; }
   else { if (loc.i !== pile.length - 1) return; group = [id]; }
-  drag = { group, id, loc, x0:e.clientX, y0:e.clientY, t0:Date.now(), moved:false,
-           home: group.map(g => ({ ...pos[g] })) };
+
+  /* Les cibles légales ne peuvent pas changer pendant le glissé : on les
+     calcule une fois ici plutôt qu'à chaque pointermove. fanY() n'est donc
+     plus appelé 7 fois par image. */
+  const targets = [];
+  if (group.length === 1){
+    for (let k = 0; k < 4; k++) if (canFound(k, id)) targets.push({ type:'found', k, x:G.sx.found[k], y:0 });
+  }
+  for (let k = 0; k < 7; k++){
+    if (loc.pile === 'tab' && k === loc.k) continue;
+    if (!canTab(k, group[0])) continue;
+    const p = S.tab[k], ys = fanY(k);
+    targets.push({ type:'tab', k, x:G.x(k), y:G.tabY + (p.length ? ys[p.length-1] + G.dU : 0) });
+  }
+
+  drag = { group, id, loc, targets, x0:e.clientX, y0:e.clientY, t0:Date.now(), moved:false,
+           dx:0, dy:0, home: group.map(g => ({ ...pos[g] })) };
   group.forEach(g => nodes[g].classList.add('drag'));
-  board.setPointerCapture(e.pointerId);
+  try { board.setPointerCapture(e.pointerId); } catch(err){}
   e.preventDefault();
 });
+
 board.addEventListener('pointermove', e => {
   if (!drag) return;
-  const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
-  if (!drag.moved && Math.hypot(dx, dy) > 5) drag.moved = true;
+  /* Le décalage est tenu à jour ici, à coût nul, pour que le lâcher soit juste
+     même s'il arrive avant le prochain rendu. */
+  drag.dx = e.clientX - drag.x0;
+  drag.dy = e.clientY - drag.y0;
+  if (!drag.moved && Math.hypot(drag.dx, drag.dy) > 5) drag.moved = true;
   if (!drag.moved) return;
-  drag.group.forEach((g, i) => {
+  /* Un seul rendu par image : sur iPhone pointermove peut arriver bien plus
+     souvent que soixante fois par seconde. */
+  if (moveRaf === null) moveRaf = requestAnimationFrame(paintDrag);
+}, { passive:true });
+
+function paintDrag(){
+  moveRaf = null;
+  if (!drag) return;
+  const dx = drag.dx, dy = drag.dy;
+  for (let i = 0; i < drag.group.length; i++){
     const h = drag.home[i];
-    put(g, h.x + dx, h.y + dy, 5000 + i, ' scale(1.045)');
-  });
+    put(drag.group[i], h.x + dx, h.y + dy, 5000 + i, ' scale(1.04)');
+  }
   highlight(bestTarget());
-});
-board.addEventListener('pointerup', () => {
+}
+
+function endDrag(cancel){
   if (!drag) return;
   const d = drag; drag = null;
+  if (moveRaf !== null){ cancelAnimationFrame(moveRaf); moveRaf = null; }
   d.group.forEach(g => nodes[g].classList.remove('drag'));
   highlight(null);
+  if (cancel){ layout(); return; }
   if (!d.moved && Date.now() - d.t0 < 400){ autoMove(d.id); return; }
   const t = bestTarget(d);
-  if (t) move(d.group, t); else layout();
-});
-board.addEventListener('pointercancel', () => {
-  if (!drag) return;
-  drag.group.forEach(g => nodes[g].classList.remove('drag'));
-  drag = null; highlight(null); layout();
-});
+  if (t) move(d.group, { type:t.type, k:t.k }); else layout();
+}
+board.addEventListener('pointerup', () => endDrag(false));
+board.addEventListener('pointercancel', () => endDrag(true));
+
 function bestTarget(d){
   const dd = d || drag;
   if (!dd) return null;
-  const p = pos[dd.id];
+  const px = dd.home[0].x + dd.dx, py = dd.home[0].y + dd.dy;
   let best = null, bestScore = 0;
-  const overlap = (x, y) => {
-    const ox = Math.min(p.x + G.cw, x + G.cw) - Math.max(p.x, x);
-    const oy = Math.min(p.y + G.ch, y + G.ch) - Math.max(p.y, y);
-    return ox > 0 && oy > 0 ? ox * oy : 0;
-  };
-  if (dd.group.length === 1){
-    for (let k = 0; k < 4; k++){
-      if (!canFound(k, dd.id)) continue;
-      const s = overlap(G.sx.found[k], 0);
-      if (s > bestScore){ bestScore = s; best = { type:'found', k }; }
-    }
-  }
-  for (let k = 0; k < 7; k++){
-    if (dd.loc.pile === 'tab' && k === dd.loc.k) continue;
-    if (!canTab(k, dd.group[0])) continue;
-    const ys = fanY(k), pile = S.tab[k];
-    const y = G.tabY + (pile.length ? ys[pile.length-1] + G.dU : 0);
-    const s = overlap(G.x(k), y);
-    if (s > bestScore){ bestScore = s; best = { type:'tab', k }; }
+  for (const t of dd.targets){
+    const ox = Math.min(px + G.cw, t.x + G.cw) - Math.max(px, t.x);
+    const oy = Math.min(py + G.ch, t.y + G.ch) - Math.max(py, t.y);
+    if (ox <= 0 || oy <= 0) continue;
+    const s = ox * oy;
+    if (s > bestScore){ bestScore = s; best = t; }
   }
   return best;
 }
 function highlight(t){
-  Object.values(slots).forEach(s => s.classList.remove('lit'));
-  if (!t) return;
-  slots[(t.type === 'found' ? 'f' : 't') + t.k].classList.add('lit');
+  const key = t ? (t.type === 'found' ? 'f' : 't') + t.k : null;
+  if (key === litKey) return;                 /* pas de write DOM inutile */
+  if (litKey) slots[litKey].classList.remove('lit');
+  litKey = key;
+  if (key) slots[key].classList.add('lit');
 }
 
-/* ================= finish & win ================= */
+/* ================= indice et impasse ================= */
+function findMove(){
+  /* 1. vers les fondations */
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k]; if (!p.length) continue;
+    const id = p[p.length-1];
+    for (let f = 0; f < 4; f++) if (canFound(f, id)) return { ids:[id], t:{ type:'found', k:f } };
+  }
+  if (S.waste.length){
+    const id = S.waste[S.waste.length-1];
+    for (let f = 0; f < 4; f++) if (canFound(f, id)) return { ids:[id], t:{ type:'found', k:f } };
+  }
+  /* 2. tableau vers tableau, seulement si ça découvre une carte */
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k]; if (!p.length) continue;
+    const i0 = p.findIndex(id => S.up[id]); if (i0 <= 0) continue;
+    const group = p.slice(i0); if (!isSeq(group)) continue;
+    for (let d = 0; d < 7; d++){
+      if (d === k) continue;
+      if (canTab(d, group[0])) return { ids:group, t:{ type:'tab', k:d } };
+    }
+  }
+  /* 3. la carte retournée vers le tableau */
+  if (S.waste.length){
+    const id = S.waste[S.waste.length-1];
+    for (let d = 0; d < 7; d++) if (canTab(d, id)) return { ids:[id], t:{ type:'tab', k:d } };
+  }
+  /* 4. déplacement de confort, sur une colonne déjà entièrement retournée */
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k]; if (!p.length || !S.up[p[0]]) continue;
+    if (!isSeq(p)) continue;
+    for (let d = 0; d < 7; d++){
+      if (d === k || !S.tab[d].length) continue;
+      if (canTab(d, p[0])) return { ids:p.slice(), t:{ type:'tab', k:d } };
+    }
+  }
+  /* 5. piocher */
+  if (S.stock.length || S.waste.length) return { draw:true };
+  return null;
+}
+/* Impasse réelle : on regarde aussi toutes les cartes encore dans la pioche,
+   pour ne jamais annoncer une fausse fin de partie. */
+function anyMoveAtAll(){
+  const m = findMove();
+  if (m && !m.draw) return true;
+  for (const id of S.stock.concat(S.waste)){
+    for (let f = 0; f < 4; f++) if (canFound(f, id)) return true;
+    for (let d = 0; d < 7; d++) if (canTab(d, id)) return true;
+  }
+  return false;
+}
+let hintT = null;
+function hint(){
+  if (!S || won || dealing) return;
+  const m = findMove();
+  document.querySelectorAll('.hinted').forEach(n => n.classList.remove('hinted'));
+  document.querySelectorAll('.slot.hint').forEach(n => n.classList.remove('hint'));
+  clearTimeout(hintT);
+  if (!m){ toast('Aucun coup possible. Annulez ou lancez une nouvelle partie.', 3400); return; }
+  if (m.draw){
+    slots.stock.classList.add('hint');
+    toast(S.stock.length ? 'Piochez' : 'Remettez la pioche en jeu');
+  } else {
+    m.ids.forEach(id => nodes[id].classList.add('hinted'));
+    slots[(m.t.type === 'found' ? 'f' : 't') + m.t.k].classList.add('hint');
+  }
+  haptic();
+  hintT = setTimeout(() => {
+    document.querySelectorAll('.hinted').forEach(n => n.classList.remove('hinted'));
+    document.querySelectorAll('.slot.hint').forEach(n => n.classList.remove('hint'));
+  }, 2600);
+}
+function checkStuck(){
+  if (won || stuckTold) return;
+  if (S.stock.length || S.waste.length) return;
+  if (anyMoveAtAll()) return;
+  stuckTold = true;
+  toast('Plus aucun coup possible. Annulez, ou repartez sur une nouvelle donne.', 4200);
+}
+
+/* ================= fin et victoire ================= */
 const allUp = () => S.tab.every(p => p.every(id => S.up[id]));
 function finish(){
   let guard = 0;
-  const next = () => { if (!won) setTimeout(tick, REDUCED ? 0 : 80); };
+  const next = () => { if (!won) setTimeout(tick, REDUCED ? 0 : 70); };
   function tick(){
     if (guard++ > 500 || won) return;
     for (let k = 0; k < 7; k++){
@@ -819,17 +1071,23 @@ function finish(){
 function checkWin(){
   if (!S.found.every(f => f.length === 13)) return;
   won = true; stopClock();
+  const record = (!stats.bestTime || seconds < stats.bestTime);
   stats.played++; stats.won++;
   stats.streak++; stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
-  if (!stats.bestTime || seconds < stats.bestTime) stats.bestTime = seconds;
+  if (record) stats.bestTime = seconds;
   if (!stats.bestMoves || S.moves < stats.bestMoves) stats.bestMoves = S.moves;
   if (isDaily) stats.daily[dayKey] = { won:true, time:seconds, moves:S.moves };
   saveStats(); Store.del(K.state);
-  el('won-title').textContent = isDaily ? 'Défi du jour résolu' : 'Gagné';
-  el('won-stats').textContent = `${fmt(seconds)} · ${S.moves} coups`;
-  el('won').classList.add('show');
   haptic('win'); update();
   if (!REDUCED) celebrate();
+  el('won-title').textContent = isDaily ? 'Défi du jour résolu' : 'Gagné';
+  el('won-sub').textContent = record && stats.played > 1
+    ? 'Nouveau meilleur temps.'
+    : `Série de ${stats.streak} ${stats.streak > 1 ? 'victoires' : 'victoire'}.`;
+  el('won-grid').innerHTML =
+    `<div class="cell"><b>${fmt(seconds)}</b><i>Temps</i></div>` +
+    `<div class="cell"><b>${S.moves}</b><i>Coups</i></div>`;
+  setTimeout(() => openSheet('won', true), REDUCED ? 200 : 1100);
 }
 
 let flyers = [], raf = null, launcher = null;
@@ -838,20 +1096,21 @@ function celebrate(){
   launcher = setInterval(() => {
     let tries = 0, f;
     do { f = S.found[k = (k + 1) % 4]; tries++; } while (!f.length && tries < 5);
-    if (!f.length){ clearInterval(launcher); launcher = null; return; }
+    if (!f.length || flyers.length > 22){ clearInterval(launcher); launcher = null; return; }
     const id = f.pop();
     nodes[id].classList.add('fly');
     nodes[id].style.zIndex = 9000 + flyers.length;
     flyers.push({ id, x:pos[id].x, y:pos[id].y,
                   vx:(Math.random()*5+2.5)*(Math.random()<.5?-1:1), vy:-(Math.random()*6+3) });
     if (!raf) raf = requestAnimationFrame(step);
-  }, 185);
+  }, 190);
   function step(){
     const floor = G.H - G.ch;
     flyers = flyers.filter(p => {
       p.vy += .55; p.x += p.vx; p.y += p.vy;
       if (p.y > floor){ p.y = floor; p.vy *= -.76; }
       nodes[p.id].style.transform = `translate3d(${p.x}px,${p.y}px,0)`;
+      lastT[p.id] = null;
       if (p.x < -G.cw*2 || p.x > G.W + G.cw*2){ nodes[p.id].style.opacity = 0; return false; }
       return true;
     });
@@ -865,10 +1124,11 @@ function stopCelebrate(){
   nodes.forEach(n => { n.classList.remove('fly'); n.style.opacity = ''; });
 }
 
-/* ================= clock ================= */
+/* ================= horloge ================= */
 function start(){
   if (running || won) return;
   running = true;
+  clearInterval(timer);
   timer = setInterval(() => { seconds++; el('v-time').textContent = fmt(seconds); }, 1000);
 }
 function stopClock(){ running = false; clearInterval(timer); }
@@ -876,13 +1136,16 @@ function stopClock(){ running = false; clearInterval(timer); }
 function update(){
   el('v-moves').textContent = S ? S.moves : 0;
   el('v-time').textContent = fmt(seconds);
-  el('btn-finish').hidden = !S || won || !allUp() || S.found.every(f => f.length === 13);
-  el('btn-undo').disabled = !history.length;
+  const complete = !S || S.found.every(f => f.length === 13);
+  el('btn-finish').classList.toggle('show', !!S && !won && !complete && allUp());
+  el('btn-undo').disabled = !history.length || won;
+  el('btn-hint').disabled = !S || won || dealing;
   const done = stats.daily[todayKey()];
-  el('btn-daily').textContent = done ? 'Défi résolu ✓' : 'Défi du jour';
+  el('btn-daily').classList.toggle('done', !!done);
+  label(el('btn-daily'), done ? 'Résolu' : 'Défi');
 }
 
-/* ================= new game / restore ================= */
+/* ================= nouvelle partie ================= */
 function countAbandon(){
   if (S && !won && S.moves > 0){
     stats.played++; stats.streak = 0; saveStats();
@@ -891,11 +1154,15 @@ function countAbandon(){
 function newGame(opts){
   const o = opts || {};
   countAbandon();
-  stopCelebrate(); stopClock();
-  seconds = 0; won = false; history = []; drag = null;
+  /* Toute distribution en cours est périmée : ses minuteurs retomberaient sur
+     la nouvelle donne et y retourneraient les mauvaises cartes. */
+  const gen = ++dealGen;
+  stopCelebrate(); stopClock(); closeSheets();
+  seconds = 0; won = false; history = []; drag = null; stuckTold = false; litKey = null;
   isDaily = !!o.daily; dayKey = isDaily ? todayKey() : null;
-  el('won').classList.remove('show');
   S = blank(); dealt = new Set();
+  nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly','hinted'); });
+  lastT.length = 0; lastZ.length = 0;
 
   let rand = Math.random;
   if (isDaily){
@@ -913,34 +1180,79 @@ function newGame(opts){
   if (REDUCED){
     order.forEach(id => dealt.add(id));
     S.tab.forEach(p => { if (p.length) S.up[p[p.length-1]] = true; });
-    layout(); return;
+    dealing = false; layout(); update(); return;
   }
+  dealing = true; update();
   order.forEach((id, n) => setTimeout(() => {
+    if (gen !== dealGen) return;
     dealt.add(id);
     const loc = locate(id);
     if (loc && loc.i === S.tab[loc.k].length - 1) S.up[id] = true;
     layout();
-  }, 40 + n * 42));
+    if (n === order.length - 1){ dealing = false; update(); }
+  }, 30 + n * 34));
+}
+function requestNew(daily){
+  const btn = daily ? el('btn-daily') : el('btn-new');
+  const risky = S && !won && S.moves > 0 && !dealing;
+  const go = () => {
+    newGame({ daily });
+    if (daily){
+      const d = stats.daily[todayKey()];
+      toast(d ? 'Défi du jour déjà résolu. Rejoué pour le plaisir.'
+              : 'Défi du jour : la même donne pour tout le monde.', 3000);
+    }
+  };
+  if (!risky) return go();
+  arm(btn, daily ? 'Le défi remplace la partie en cours. Confirmez.'
+                 : 'La partie en cours compte comme perdue. Confirmez.', go);
+}
+/* Confirmation en deux temps : le libellé du bouton devient « Confirmer ».
+   Pas de boîte de dialogue, mais aucune partie perdue par mégarde. */
+function arm(btn, msg, fn){
+  if (btn._armed){
+    clearTimeout(btn._t); btn._armed = false;
+    btn.classList.remove('armed'); label(btn, btn._orig);
+    fn(); return;
+  }
+  document.querySelectorAll('.dk.armed').forEach(b => {
+    clearTimeout(b._t); b._armed = false; b.classList.remove('armed'); label(b, b._orig);
+  });
+  btn._armed = true; btn._orig = btn.querySelector('span').textContent;
+  btn.classList.add('armed'); label(btn, 'Confirmer');
+  toast(msg, 3200);
+  btn._t = setTimeout(() => {
+    btn._armed = false; btn.classList.remove('armed'); label(btn, btn._orig);
+  }, 3400);
 }
 function restore(saved){
+  dealGen++;
   stopCelebrate(); stopClock();
   S = saved.S; seconds = saved.seconds || 0;
   isDaily = !!saved.isDaily; dayKey = saved.dayKey || null;
-  won = false; history = []; drag = null;
+  won = false; history = []; drag = null; stuckTold = false; dealing = false;
   dealt = new Set([...Array(52).keys()]);
-  el('won').classList.remove('show');
+  nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly','hinted'); });
+  lastT.length = 0; lastZ.length = 0;
   geometry(); layout(); update();
+  if (S.moves > 0) start();     /* la partie reprise redémarre son horloge */
 }
 
-/* ================= sheets & settings ================= */
-function openSheet(which){
+/* ================= feuilles ================= */
+let openKey = null;
+function openSheet(which, light){
   if (which === 'stats') renderStats();
-  el('scrim').classList.add('show');
+  closeSheets();
+  const sc = el('scrim');
+  sc.classList.toggle('light', !!light);
+  sc.classList.add('show');
   el('sheet-' + which).classList.add('show');
+  openKey = which;
 }
 function closeSheets(){
   el('scrim').classList.remove('show');
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
+  openKey = null;
 }
 function renderStats(){
   const rate = stats.played ? Math.round(stats.won / stats.played * 100) : 0;
@@ -957,21 +1269,24 @@ function renderStats(){
   el('daily-cell').innerHTML = d
     ? `<b>${fmt(d.time)} · ${d.moves} coups</b><i>Défi du jour, résolu</i>`
     : `<b>—</b><i>Défi du jour, pas encore résolu</i>`;
-  el('stats-note').textContent =
-    'Une partie abandonnée en cours de route compte comme une défaite et remet la série à zéro.';
 }
 function applyPrefs(){
   document.documentElement.dataset.theme = prefs.theme;
-  const th = THEMES.find(t => t.id === prefs.theme);
-  document.querySelector('meta[name="theme-color"]').setAttribute('content',
-    getComputedStyle(document.body).backgroundColor || '#0A0E1C');
   el('seg-draw').querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', +b.dataset.v === prefs.draw));
   el('seg-hand').querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', +b.dataset.v === prefs.lefty));
   el('sw-haptic').classList.toggle('on', !!prefs.haptic);
+  el('sw-haptic').setAttribute('aria-checked', prefs.haptic ? 'true' : 'false');
+  el('sw-tall').classList.toggle('on', !!prefs.tall);
+  el('sw-tall').setAttribute('aria-checked', prefs.tall ? 'true' : 'false');
   el('themes').querySelectorAll('.th').forEach(b => b.classList.toggle('on', b.dataset.v === prefs.theme));
-  if (th) void th;
+  /* La couleur de la barre système suit exactement la couleur des bords du
+     fond : plus de bandeau d'une autre teinte en haut ni en bas de l'iPhone.
+     On lit la variable, pas le fond calculé : celui-ci est en transition et
+     renverrait une couleur intermédiaire. */
+  const rgb = getComputedStyle(document.documentElement).getPropertyValue('--bg-rgb').trim();
+  if (rgb) document.querySelector('meta[name="theme-color"]').setAttribute('content', 'rgb(' + rgb + ')');
 }
 function buildThemes(){
   el('themes').innerHTML = THEMES.map(t =>
@@ -984,26 +1299,24 @@ function buildThemes(){
   });
 }
 
-/* ================= wiring ================= */
-el('btn-new').onclick = () => newGame();
-el('btn-again').onclick = () => newGame();
+/* ================= branchements ================= */
+el('btn-new').onclick = () => requestNew(false);
+el('btn-daily').onclick = () => requestNew(true);
+el('btn-again').onclick = () => newGame({ daily:isDaily });
 el('btn-undo').onclick = undo;
+el('btn-hint').onclick = hint;
 el('btn-finish').onclick = finish;
-el('btn-daily').onclick = () => {
-  const d = stats.daily[todayKey()];
-  newGame({ daily:true });
-  toast(d ? 'Défi du jour, déjà résolu. Rejoué pour le plaisir.' : 'Défi du jour : même donne pour tout le monde');
-};
 el('btn-stats').onclick = () => openSheet('stats');
 el('btn-set').onclick = () => openSheet('set');
+el('btn-won-stats').onclick = () => openSheet('stats');
 el('scrim').onclick = closeSheets;
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheets);
 
 el('seg-draw').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const v = +b.dataset.v; if (v === prefs.draw) return;
-  prefs.draw = v; applyPrefs(); savePrefs(); newGame();
-  toast(v === 1 ? 'Tirage à une carte' : 'Tirage à trois cartes');
+  prefs.draw = v; applyPrefs(); savePrefs();
+  toast(v === 1 ? 'Tirage à une carte, dès la prochaine donne' : 'Tirage à trois cartes, dès la prochaine donne', 3000);
 });
 el('seg-hand').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1011,49 +1324,71 @@ el('seg-hand').addEventListener('click', e => {
   prefs.lefty = v; applyPrefs(); savePrefs(); relayout();
   toast(v ? 'Disposition gaucher' : 'Disposition droitier');
 });
-const toggleHaptic = () => {
-  prefs.haptic = prefs.haptic ? 0 : 1; applyPrefs(); savePrefs();
-  if (prefs.haptic) haptic('strong');
+const flip = key => {
+  prefs[key] = prefs[key] ? 0 : 1; applyPrefs(); savePrefs();
+  if (prefs[key]) haptic('strong');
 };
-el('sw-haptic').onclick = toggleHaptic;
-el('sw-haptic').onkeydown = e => { if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); toggleHaptic(); } };
+el('sw-haptic').onclick = () => flip('haptic');
+el('sw-tall').onclick = () => { flip('tall'); relayout(); };
+document.querySelectorAll('.sw').forEach(s => {
+  s.onkeydown = e => { if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); s.click(); } };
+});
 
-let resetArmed = false;
+let resetArmed = false, resetT = null;
 el('btn-reset').onclick = () => {
+  const b = el('btn-reset');
   if (!resetArmed){
-    resetArmed = true;
-    el('btn-reset').textContent = 'Confirmer ?';
-    setTimeout(() => { resetArmed = false; el('btn-reset').textContent = 'Effacer'; }, 4000);
+    resetArmed = true; b.textContent = 'Confirmer ?';
+    clearTimeout(resetT);
+    resetT = setTimeout(() => { resetArmed = false; b.textContent = 'Effacer'; }, 4000);
     return;
   }
+  clearTimeout(resetT);
   stats = { played:0, won:0, streak:0, bestStreak:0, bestTime:0, bestMoves:0, daily:{} };
-  saveStats(); resetArmed = false;
-  el('btn-reset').textContent = 'Effacer';
-  renderStats(); update(); toast('Statistiques effacées');
+  saveStats(); resetArmed = false; b.textContent = 'Effacer';
+  update(); toast('Statistiques effacées');
 };
 
 addEventListener('keydown', e => {
   if (e.key === 'Escape'){ closeSheets(); return; }
-  if (e.target.tagName === 'BUTTON' || e.target.classList.contains('sw')) return;
+  if (openKey) return;
+  const tag = e.target.tagName;
+  if (tag === 'BUTTON' || e.target.classList.contains('sw')) return;
   if (e.key === 'z' || e.key === 'u') undo();
-  else if (e.key === 'n') newGame();
+  else if (e.key === 'n') requestNew(false);
+  else if (e.key === 'h') hint();
   else if (e.key === ' ' || e.key === 'Enter'){ draw(); e.preventDefault(); }
 });
 document.addEventListener('gesturestart', e => e.preventDefault());
 document.addEventListener('dblclick', e => e.preventDefault(), { passive:false });
-addEventListener('visibilitychange', () => { if (document.hidden) saveSoon(); });
-addEventListener('pagehide', () => { if (S && !won) Store.set(K.state, { S, seconds, draw:prefs.draw, isDaily, dayKey }); });
 
-new ResizeObserver(() => { if (booted && !won) relayout(); else if (booted) geometry(); }).observe(board);
+/* L'horloge se met en pause quand l'app passe en arrière-plan : le temps
+   affiché reste celui réellement joué. */
+addEventListener('visibilitychange', () => {
+  if (document.hidden){ stopClock(); if (S && !won) Store.set(K.state, snapState()); }
+  else if (S && !won && S.moves > 0) start();
+});
+addEventListener('pagehide', () => { if (S && !won) Store.set(K.state, snapState()); });
 
-/* ================= boot ================= */
+/* Le clavier logiciel et la barre d'adresse font vibrer la taille du plateau
+   sur iOS : on attend que ça se stabilise avant de tout replacer. */
+let roT = null;
+new ResizeObserver(() => {
+  if (!booted) return;
+  clearTimeout(roT);
+  roT = setTimeout(() => { if (won) geometry(); else relayout(); }, 90);
+}).observe(board);
+
+/* ================= démarrage ================= */
 (async function boot(){
   buildCards(); buildSlots(); buildThemes();
-  const [p, st, saved] = await Promise.all([Store.get(K.prefs), Store.get(K.stats), Store.get(K.state)]);
+  const [p, st, saved, seen] = await Promise.all([
+    Store.get(K.prefs), Store.get(K.stats), Store.get(K.state), Store.get(K.seen)
+  ]);
   if (p) prefs = Object.assign(prefs, p);
   if (st) stats = Object.assign(stats, st, { daily: st.daily || {} });
   applyPrefs();
-  el('storage-note').textContent = 'Sauvegarde active via ' + Store.label + '.';
+  el('storage-note').textContent = 'Sauvegarde active via le ' + Store.label + '.';
   booted = true;
   if (saved && saved.S && saved.S.found && !saved.S.found.every(f => f.length === 13)){
     if (saved.draw) prefs.draw = saved.draw;
@@ -1061,6 +1396,10 @@ new ResizeObserver(() => { if (booted && !won) relayout(); else if (booted) geom
     toast('Partie reprise');
   } else {
     newGame();
+    if (!seen){
+      Store.set(K.seen, 1);
+      setTimeout(() => toast('Touchez une carte pour la placer au mieux, ou faites-la glisser.', 5200), 1500);
+    }
   }
 })();
 
@@ -1068,19 +1407,28 @@ new ResizeObserver(() => { if (booted && !won) relayout(); else if (booted) geom
 </script>
 
 <script>
-/* --- version marker + service worker registration --- */
-window.APP_VERSION = '1.0.1';
+/* --- version, service worker --- */
+window.APP_VERSION = '1.1.0';
 addEventListener('load', () => {
-  const sheet = document.getElementById('sheet-set');
-  if (sheet){
-    const p = document.createElement('p');
-    p.className = 'note';
-    p.textContent = 'Version ' + window.APP_VERSION;
-    sheet.appendChild(p);
-  }
-  if ('serviceWorker' in navigator){
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  const n = document.getElementById('version-note');
+  if (n) n.textContent = 'Version ' + window.APP_VERSION;
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'installed' && navigator.serviceWorker.controller){
+          const t = document.getElementById('toast');
+          if (t){
+            t.textContent = 'Nouvelle version prête. Fermez puis rouvrez l’app.';
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 5000);
+          }
+        }
+      });
+    });
+  }).catch(() => {});
 });
 </script>
 </body>
