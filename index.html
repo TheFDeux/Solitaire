@@ -157,14 +157,19 @@ body{
              transition:transform .38s cubic-bezier(.4,.05,.2,1);border-radius:var(--radius)}
 .card.down .inner{transform:rotateY(180deg)}
 .face,.back{position:absolute;inset:0;border-radius:var(--radius);
-            backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden}
-.face{background:linear-gradient(180deg,#FFFFFF 0%,#F4F5F8 100%);color:var(--ink);
+            backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;
+            transition:opacity 0s linear .19s}
+/* Safari ignores backface-visibility in some stacking contexts, so the face and
+   the back are also swapped explicitly halfway through the flip. */
+.card.down .face{opacity:0}
+.card:not(.down) .back{opacity:0}
+.face{transform:rotateY(0deg) translateZ(.6px);
+      background:linear-gradient(180deg,#FFFFFF 0%,#F4F5F8 100%);color:var(--ink);
       box-shadow:0 1px 1px rgba(0,0,0,.10), 0 6px 16px rgba(0,0,0,.22), 0 18px 38px rgba(0,0,0,.16)}
 .face.red{color:var(--red)}
 .face::after{content:'';position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(148deg,rgba(255,255,255,.95) 0%,rgba(255,255,255,0) 42%);
-  mix-blend-mode:overlay}
-.back{transform:rotateY(180deg);
+  background:linear-gradient(148deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 42%)}
+.back{transform:rotateY(180deg) translateZ(.6px);
   background:linear-gradient(150deg,var(--back1) 0%,var(--back2) 52%,var(--back3) 100%);
   box-shadow:0 1px 1px rgba(0,0,0,.10), 0 6px 16px rgba(0,0,0,.22), 0 18px 38px rgba(0,0,0,.16)}
 .back::after{content:'';position:absolute;inset:7%;border-radius:calc(var(--radius) * .72);
@@ -264,18 +269,24 @@ body{
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
 @media (max-width:760px){
-  .hud{flex-wrap:wrap;gap:9px;padding:10px 11px;border-radius:22px}
+  .hud{flex-wrap:wrap;gap:8px;padding:9px 10px;border-radius:20px;
+       margin:calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left))}
+  .brand b{display:none}
   .brand{order:1}
   .stats{order:2;margin-left:auto}
   .tools{order:3;width:100%}
-  .btn{flex:1 1 auto;text-align:center;padding:9px 8px;font-size:12px}
+  .btn{flex:1 1 auto;text-align:center;padding:8px 6px;font-size:11.5px}
   .btn.ico{flex:0 0 auto}
-  .stat{min-width:60px;padding:5px 9px}
-  .table{padding:12px;border-radius:24px}
+  .stat{min-width:58px;padding:5px 9px}
+  .stat b{font-size:15px}
+  .table{padding:6px 5px;border-radius:0;background:transparent;border:0;
+         backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;
+         margin:6px calc(5px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(5px + env(safe-area-inset-left))}
   .won{flex-direction:column;text-align:center;width:84%;gap:14px}
 }
 @media (prefers-reduced-motion:reduce){
   .card,.card .inner,.won,.btn,.sheet,.scrim{transition-duration:.01ms!important}
+  .face,.back{transition-delay:0s!important}
   .blob{animation:none}
 }
 </style>
@@ -550,17 +561,28 @@ function isSeq(g){
 /* ================= geometry ================= */
 function geometry(){
   const W = board.clientWidth, H = board.clientHeight;
-  let cw = Math.min(W / 7.84, 128);
+  let cw = Math.min(W / 7.72, 128);
   let ch = cw * 1.42;
-  if (ch * 2.3 > H){ cw *= H / (ch * 2.3); ch = cw * 1.42; }
-  const gapX = cw * .14, gapY = ch * .30;
+  if (ch * 2.8 > H){ cw *= H / (ch * 2.8); ch = cw * 1.42; }
+  const gapX = cw * .12;
   const total = cw * 7 + gapX * 6;
   const ox = Math.max(0, (W - total) / 2);
   const colX = k => ox + k * (cw + gapX);
+
+  /* On a phone the 7 columns cap the card width, which leaves a lot of unused
+     height. Stretch the fan (and the gap under the top row) to fill it. */
+  const dUb = ch * .285, dDb = ch * .15;
+  const room = H - (ch + ch * .30);
+  const nominal = ch + 12 * dUb;
+  const fanScale = Math.max(.6, Math.min(2.3, room > 0 ? room / nominal : 1));
+  const gapY = ch * .30 * Math.max(1, Math.min(2, fanScale));
+  const tabY = ch + gapY;
+
   const map = prefs.lefty
     ? { stock:6, waste:5, found:[0,1,2,3] }
     : { stock:0, waste:1, found:[3,4,5,6] };
-  G = { cw, ch, gapX, gapY, W, H, tabY: ch + gapY, x: colX,
+  G = { cw, ch, gapX, gapY, W, H, tabY, x: colX,
+        dU: dUb * fanScale, dD: dDb * fanScale,
         sx: { stock: colX(map.stock), waste: colX(map.waste), found: map.found.map(colX) },
         wasteDir: prefs.lefty ? -1 : 1 };
   board.style.setProperty('--cw', cw + 'px');
@@ -573,11 +595,11 @@ function geometry(){
 }
 function fanY(k){
   const p = S.tab[k];
-  const dU = G.ch * .285, dD = G.ch * .13;
+  const dU = G.dU, dD = G.dD;
   const step = [];
   for (let i = 0; i < p.length; i++) step.push(i === 0 ? 0 : (S.up[p[i-1]] ? dU : dD));
   const span = step.reduce((a, b) => a + b, 0);
-  const room = Math.max(G.ch * .6, G.H - G.tabY - G.ch);
+  const room = Math.max(0, G.H - G.tabY - G.ch);
   const f = span > room ? room / span : 1;
   const out = []; let acc = 0;
   for (let i = 0; i < p.length; i++){ acc += step[i] * f; out.push(acc); }
@@ -762,7 +784,7 @@ function bestTarget(d){
     if (dd.loc.pile === 'tab' && k === dd.loc.k) continue;
     if (!canTab(k, dd.group[0])) continue;
     const ys = fanY(k), pile = S.tab[k];
-    const y = G.tabY + (pile.length ? ys[pile.length-1] + G.ch * .285 : 0);
+    const y = G.tabY + (pile.length ? ys[pile.length-1] + G.dU : 0);
     const s = overlap(G.x(k), y);
     if (s > bestScore){ bestScore = s; best = { type:'tab', k }; }
   }
@@ -1047,7 +1069,7 @@ new ResizeObserver(() => { if (booted && !won) relayout(); else if (booted) geom
 
 <script>
 /* --- version marker + service worker registration --- */
-window.APP_VERSION = '1.0.0';
+window.APP_VERSION = '1.0.1';
 addEventListener('load', () => {
   const sheet = document.getElementById('sheet-set');
   if (sheet){
