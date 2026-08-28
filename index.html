@@ -211,7 +211,8 @@ body{
   transition:background .16s, box-shadow .16s;
 }
 .slot.lit{background:rgba(255,255,255,.17);
-          box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.65), 0 0 26px rgba(150,200,255,.42)}
+          box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.65),
+                     0 0 calc(var(--cw) * .2) rgba(150,200,255,.42)}
 .slot.stock{cursor:pointer}
 .slot .recycle{position:absolute;inset:0;margin:auto;width:24%;height:24%;opacity:0;transition:opacity .2s}
 .slot.stock.empty .recycle{opacity:.5}
@@ -230,18 +231,25 @@ body{
    sont donc aussi echanges explicitement a mi-parcours du retournement. */
 .card.down .face{opacity:0}
 .card:not(.down) .back{opacity:0}
+/* Les ombres sont exprimées en fraction de la carte, pas en pixels fixes. Un
+   flou de 20 px valait 15 % de la largeur sur un écran d'ordinateur mais 42 %
+   sur iPhone : sept colonnes en éventail noyaient le tableau dans un halo. */
 .face{transform:rotateY(0deg) translateZ(.6px);
       background:linear-gradient(178deg,#FFFFFF 0%,#F1F2F6 100%);color:var(--ink);
-      box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
+      box-shadow:0 calc(var(--cw) * .008) calc(var(--cw) * .016) rgba(0,0,0,.22),
+                 0 calc(var(--cw) * .055) calc(var(--cw) * .14) rgba(0,0,0,.22)}
 .face.red{color:var(--red)}
+/* Le reflet part du coin supérieur droit. Il partait du gauche, pile sur le
+   chiffre et l'enseigne, dont il délavait le contraste. */
 .face::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(150deg,rgba(255,255,255,.6) 0%,rgba(255,255,255,0) 40%)}
+  background:linear-gradient(212deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,0) 42%)}
 /* Le motif du dos est une simple variable : la même valeur habille les 52
    cartes et sert d'aperçu dans la galerie, sans dupliquer une ligne de CSS. */
 .back{transform:rotateY(180deg) translateZ(.6px);
   background-image:var(--bkimg, none),
                    linear-gradient(150deg,var(--back1) 0%,var(--back2) 52%,var(--back3) 100%);
-  box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
+  box-shadow:0 calc(var(--cw) * .008) calc(var(--cw) * .016) rgba(0,0,0,.22),
+             0 calc(var(--cw) * .055) calc(var(--cw) * .14) rgba(0,0,0,.22)}
 .back::after{content:"";position:absolute;inset:7%;border-radius:calc(var(--radius) * .7);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.3);
   background:linear-gradient(160deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 58%)}
@@ -252,11 +260,14 @@ body{
 /* index et figure */
 .idx{position:absolute;top:5%;left:7.5%;display:flex;align-items:center;
      gap:calc(var(--cw) * .05);z-index:1}
-.rk{font-family:var(--round);font-weight:700;font-size:calc(var(--cw) * .315);
+/* Plancher en pixels sur l'index : sur iPhone la carte ne fait que 47 px de
+   large, et une taille purement proportionnelle passait sous le seuil de
+   lisibilité. Sur grand écran le calc reprend la main, rien ne change. */
+.rk{font-family:var(--round);font-weight:700;font-size:max(17px, calc(var(--cw) * .315));
     line-height:.88;letter-spacing:-.035em}
-.rk.ten{font-size:calc(var(--cw) * .265);letter-spacing:-.055em}
-.idx svg{width:calc(var(--cw) * .175);height:calc(var(--cw) * .175);fill:currentColor;
-         margin-top:calc(var(--cw) * .01)}
+.rk.ten{font-size:max(14px, calc(var(--cw) * .265));letter-spacing:-.055em}
+.idx svg{width:max(11px, calc(var(--cw) * .175));height:max(11px, calc(var(--cw) * .175));
+         fill:currentColor;margin-top:calc(var(--cw) * .01)}
 .hero{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);
       width:calc(var(--cw) * .40);height:calc(var(--cw) * .40);fill:currentColor;z-index:1;opacity:.92}
 .hero.ace{width:calc(var(--cw) * .54);height:calc(var(--cw) * .54);opacity:.95}
@@ -266,7 +277,9 @@ body{
 
 .card.pickable{cursor:grab}
 .card.drag{transition:none;cursor:grabbing;will-change:transform}
-.card.drag .face,.card.drag .back{box-shadow:0 2px 6px rgba(0,0,0,.2), 0 26px 46px rgba(0,0,0,.4)}
+.card.drag .face,.card.drag .back{
+  box-shadow:0 calc(var(--cw) * .015) calc(var(--cw) * .045) rgba(0,0,0,.2),
+             0 calc(var(--cw) * .2) calc(var(--cw) * .35) rgba(0,0,0,.4)}
 .card.fly{transition:none;will-change:transform}
 
 /* ---------- dock du bas ---------- */
@@ -1047,19 +1060,26 @@ function geometry(){
      l'éventail, jusqu'à une limite qui garde une colonne de treize cartes
      entière sans compression ; puis l'écart entre la rangée du haut et le
      tableau ; le reste respire en bas. */
-  const dUmin = ch * .22, dUmax = ch * (prefs.tall ? .56 : .34);
-  const dD = ch * .13;
+  const dUmin = ch * .22, dUmax = ch * (prefs.tall ? .62 : .38);
   let gapY = ch * .30, dU = dUmin;
   const rows = 7;                       /* colonne la plus longue à la donne */
   let slack = H - (ch + gapY + ch + (rows - 1) * dU);
   if (slack > 0){
     dU = Math.min(dUmax, dU + slack * .62 / (rows - 1));
     slack = H - (ch + gapY + ch + (rows - 1) * dU);
-    if (slack > 0) gapY = Math.min(ch * 1.6, gapY + slack * .5);
+    if (slack > 0) gapY = Math.min(ch * 1.2, gapY + slack * .5);
   }
-  /* Une colonne de treize cartes doit rester dans le plateau. */
-  gapY = Math.min(gapY, Math.max(ch * .26, H - ch - 12 * dU - ch));
+  /* Aucune réservation de place pour les colonnes profondes : fanY() resserre
+     déjà chaque colonne dès que son étalement dépasse la hauteur restante,
+     rien ne peut donc déborder du plateau. */
   const tabY = ch + gapY;
+  /* L'écart des cartes face cachée s'étale lui aussi. À la donne, la colonne
+     la plus longue n'est faite que de cartes retournées : avec un pas figé à
+     .13 de la hauteur, soit 9 px sur un iPhone, tout le tableau restait tassé
+     dans le haut de l'écran. Il ne dépasse jamais l'écart des cartes visibles,
+     et le tassage prend le relais quand la colonne s'allonge. */
+  const roomForFan = Math.max(0, H - tabY - ch);
+  const dD = Math.min(dU, Math.max(ch * .13, roomForFan * .58 / (rows - 1)));
 
   const map = prefs.lefty
     ? { stock:6, waste:5, found:[0,1,2,3] }
@@ -1938,7 +1958,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.3.0';
+window.APP_VERSION = '1.3.2';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
