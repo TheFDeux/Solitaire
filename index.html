@@ -212,11 +212,6 @@ body{
 }
 .slot.lit{background:rgba(255,255,255,.17);
           box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.65), 0 0 26px rgba(150,200,255,.42)}
-.slot.hint{animation:hintslot 1.2s ease-in-out 2}
-@keyframes hintslot{
-  0%,100%{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
-  50%{box-shadow:inset 0 0 0 2px rgba(255,255,255,.8), 0 0 30px rgba(150,200,255,.5)}
-}
 .slot.stock{cursor:pointer}
 .slot .recycle{position:absolute;inset:0;margin:auto;width:24%;height:24%;opacity:0;transition:opacity .2s}
 .slot.stock.empty .recycle{opacity:.5}
@@ -273,11 +268,6 @@ body{
 .card.drag{transition:none;cursor:grabbing;will-change:transform}
 .card.drag .face,.card.drag .back{box-shadow:0 2px 6px rgba(0,0,0,.2), 0 26px 46px rgba(0,0,0,.4)}
 .card.fly{transition:none;will-change:transform}
-.card.hinted .face{animation:hintcard 1.2s ease-in-out 2}
-@keyframes hintcard{
-  0%,100%{box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
-  50%{box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 10px 28px rgba(0,0,0,.3)}
-}
 
 /* ---------- dock du bas ---------- */
 .dock{
@@ -333,10 +323,17 @@ body{
   display:flex;align-items:center;justify-content:center;overflow-y:auto;
   -webkit-overflow-scrolling:touch;
   padding:calc(20px + env(safe-area-inset-top)) 22px calc(20px + env(safe-area-inset-bottom));
-  background:rgba(var(--bg-rgb),.94);
+  /* Transparent : le fond ambiant reste visible, ce qui donne à l'accueil sa
+     propre identité. Ce n'est pas un voile posé sur la partie, le plateau et
+     ses barres sont réellement escamotés, voir body.home plus bas. */
+  background:transparent;
   opacity:0;pointer-events:none;transition:opacity .3s ease;
 }
 .menu.show{opacity:1;pointer-events:auto}
+/* Bascule d'écran. On garde les boîtes en place, donc les dimensions du
+   plateau restent mesurables, mais rien ne s'affiche ni ne réagit au doigt. */
+.hud,.table,.dock{transition:opacity .26s ease}
+body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
 .menu-in{width:100%;max-width:352px;margin:auto;display:flex;flex-direction:column;gap:9px}
 /* Croix de retour : le bouton du bandeau est recouvert par le menu, il faut
    donc une sortie visible ici. Masquée quand il n'y a pas de partie à
@@ -382,6 +379,7 @@ body{
 .mb:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .mb[hidden]{display:none}
 @media (hover:hover){ .mb:hover{background:rgba(255,255,255,.16)} .mb.primary:hover{filter:brightness(1.1)} }
+.mstack{display:flex;flex-direction:column;gap:9px;margin-top:4px}
 .mrow{display:flex;gap:9px}
 .mrow .mb{flex:1 1 0;min-width:0;flex-direction:column;align-items:center;
           text-align:center;gap:7px;padding:14px 6px}
@@ -525,11 +523,10 @@ body{
 @media (prefers-reduced-motion:reduce){
   .card,.card .inner,.btn,.dk,.sheet,.scrim,.finish,.toast{transition-duration:.01ms!important}
   .face,.back{transition-delay:0s!important}
-  .slot.hint,.card.hinted .face{animation:none}
 }
 </style>
 </head>
-<body>
+<body class="home">
 
 <div class="bg" aria-hidden="true"><i></i></div>
 
@@ -558,9 +555,6 @@ body{
   </symbol>
   <symbol id="ic-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="ic-undo" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 3v4h4"/></symbol>
-  <symbol id="ic-bulb" viewBox="0 0 24 24">
-    <path d="M12 3a6 6 0 0 0-3.3 11v2.2h6.6V14A6 6 0 0 0 12 3zM9.6 20.4h4.8"/>
-  </symbol>
   <symbol id="ic-deck" viewBox="0 0 24 24">
     <rect x="8" y="4" width="11" height="15" rx="2.4"/><path d="M5.2 7.4v9.2a2.4 2.4 0 0 0 2.4 2.4"/>
   </symbol>
@@ -569,6 +563,10 @@ body{
     <path d="M3.6 10h16.8M8.4 3.4v3.4M15.6 3.4v3.4"/>
   </symbol>
   <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 12.8l4.6 4.4L19 7"/></symbol>
+  <symbol id="ic-pause" viewBox="0 0 24 24"><path d="M9.4 4.6v14.8M14.6 4.6v14.8"/></symbol>
+  <symbol id="ic-flag" viewBox="0 0 24 24">
+    <path d="M6 21V4.2m0 0h11.6l-2.2 4.4 2.2 4.4H6"/>
+  </symbol>
   <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
   <symbol id="ic-lock" viewBox="0 0 24 24">
     <rect x="5" y="10.4" width="14" height="10.4" rx="2.6"/>
@@ -585,7 +583,6 @@ body{
 </svg>
 
 <header class="hud">
-  <button class="btn ico" id="btn-menu" aria-label="Menu"><svg viewBox="0 0 24 24"><use href="#ic-menu"/></svg></button>
   <button class="lvl" id="btn-lvl" aria-label="Progression et cosmétiques">
     <span class="badge" id="hud-lvl">1</span>
     <span class="xpbar"><i id="hud-fill"></i></span>
@@ -602,8 +599,8 @@ body{
 
 <nav class="dock" aria-label="Actions">
   <button class="finish" id="btn-finish"><svg viewBox="0 0 24 24"><use href="#ic-check"/></svg>Terminer la partie</button>
+  <button class="dk" id="btn-menu"><svg viewBox="0 0 24 24"><use href="#ic-menu"/></svg><span>Menu</span></button>
   <button class="dk" id="btn-undo"><svg viewBox="0 0 24 24"><use href="#ic-undo"/></svg><span>Annuler</span></button>
-  <button class="dk" id="btn-hint"><svg viewBox="0 0 24 24"><use href="#ic-bulb"/></svg><span>Indice</span></button>
   <button class="dk accent" id="btn-new"><svg viewBox="0 0 24 24"><use href="#ic-deck"/></svg><span>Nouvelle</span></button>
   <button class="dk" id="btn-daily"><svg viewBox="0 0 24 24"><use href="#ic-cal"/></svg><span>Défi</span></button>
 </nav>
@@ -674,6 +671,22 @@ body{
   </div>
 </section>
 
+<section class="sheet" id="sheet-pause" role="dialog" aria-modal="true" aria-label="Quitter la partie">
+  <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
+  <h3>Quitter la partie ?</h3>
+  <p class="sub" id="pause-sub"></p>
+  <div class="mstack">
+    <button class="mb primary" id="p-pause">
+      <svg viewBox="0 0 24 24"><use href="#ic-pause"/></svg>
+      <span><b>Mettre en pause</b><small>Le chrono s'arrête, vous reprendrez où vous en êtes</small></span>
+    </button>
+    <button class="mb" id="p-forfeit">
+      <svg viewBox="0 0 24 24"><use href="#ic-flag"/></svg>
+      <span><b>Abandonner</b><small id="p-forfeit-sub"></small></span>
+    </button>
+  </div>
+</section>
+
 <section class="sheet" id="sheet-cos" role="dialog" aria-modal="true" aria-label="Cosmétiques">
   <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
   <h3>Cosmétiques</h3>
@@ -694,7 +707,7 @@ body{
   <p class="sub">Tout reste sur cet appareil.</p>
   <div class="grid" id="stats-grid"></div>
   <div class="cell wide" id="daily-cell"></div>
-  <p class="note">Une partie abandonnée en cours de route compte comme une défaite et remet la série à zéro.</p>
+  <p class="note">Une partie abandonnée compte comme une défaite et remet la série à zéro, mais rapporte de l’expérience au prorata des cartes déjà montées aux fondations.</p>
 </section>
 
 <section class="sheet" id="sheet-set" role="dialog" aria-modal="true" aria-label="Réglages">
@@ -794,7 +807,8 @@ function levelOf(xp){
   while (L < 400 && xpFor(L + 1) <= xp) L++;
   return L;
 }
-const XP = { win:100, daily:250, fast:50, quick:25, streakStep:10, streakMax:100, firstToday:75 };
+const XP = { win:100, daily:250, fast:50, quick:25, streakStep:10, streakMax:100,
+             firstToday:75, perCard:1.5 };
 /* Le tirage à une carte se gagne beaucoup plus souvent que celui à trois : il
    ne rapporte donc qu'une fraction de l'expérience, sinon le mode facile
    deviendrait la voie rapide vers tous les cosmétiques. */
@@ -1288,77 +1302,40 @@ function highlight(t){
   if (key) slots[key].classList.add('lit');
 }
 
-/* ================= indice et impasse ================= */
-function findMove(){
-  /* 1. vers les fondations */
+/* ================= détection d'impasse ================= */
+/* Y a-t-il encore un coup jouable, où que ce soit ? On balaie aussi toutes les
+   cartes encore dans la pioche et dans la défausse, pas seulement les sommets
+   accessibles : une impasse ne doit jamais être annoncée à tort. */
+function anyMoveAtAll(){
+  /* sommets du tableau et de la défausse vers les fondations */
   for (let k = 0; k < 7; k++){
     const p = S.tab[k]; if (!p.length) continue;
     const id = p[p.length-1];
-    for (let f = 0; f < 4; f++) if (canFound(f, id)) return { ids:[id], t:{ type:'found', k:f } };
+    for (let f = 0; f < 4; f++) if (canFound(f, id)) return true;
   }
   if (S.waste.length){
     const id = S.waste[S.waste.length-1];
-    for (let f = 0; f < 4; f++) if (canFound(f, id)) return { ids:[id], t:{ type:'found', k:f } };
+    for (let f = 0; f < 4; f++) if (canFound(f, id)) return true;
+    for (let d = 0; d < 7; d++) if (canTab(d, id)) return true;
   }
-  /* 2. tableau vers tableau, seulement si ça découvre une carte */
+  /* séquences retournées du tableau vers une autre colonne */
   for (let k = 0; k < 7; k++){
     const p = S.tab[k]; if (!p.length) continue;
-    const i0 = p.findIndex(id => S.up[id]); if (i0 <= 0) continue;
+    const i0 = p.findIndex(id => S.up[id]); if (i0 < 0) continue;
     const group = p.slice(i0); if (!isSeq(group)) continue;
     for (let d = 0; d < 7; d++){
       if (d === k) continue;
-      if (canTab(d, group[0])) return { ids:group, t:{ type:'tab', k:d } };
+      /* déplacer une colonne entière vers une case vide ne mène à rien */
+      if (!S.tab[d].length && i0 === 0) continue;
+      if (canTab(d, group[0])) return true;
     }
   }
-  /* 3. la carte retournée vers le tableau */
-  if (S.waste.length){
-    const id = S.waste[S.waste.length-1];
-    for (let d = 0; d < 7; d++) if (canTab(d, id)) return { ids:[id], t:{ type:'tab', k:d } };
-  }
-  /* 4. déplacement de confort, sur une colonne déjà entièrement retournée */
-  for (let k = 0; k < 7; k++){
-    const p = S.tab[k]; if (!p.length || !S.up[p[0]]) continue;
-    if (!isSeq(p)) continue;
-    for (let d = 0; d < 7; d++){
-      if (d === k || !S.tab[d].length) continue;
-      if (canTab(d, p[0])) return { ids:p.slice(), t:{ type:'tab', k:d } };
-    }
-  }
-  /* 5. piocher */
-  if (S.stock.length || S.waste.length) return { draw:true };
-  return null;
-}
-/* Impasse réelle : on regarde aussi toutes les cartes encore dans la pioche,
-   pour ne jamais annoncer une fausse fin de partie. */
-function anyMoveAtAll(){
-  const m = findMove();
-  if (m && !m.draw) return true;
+  /* cartes encore enfouies dans la pioche */
   for (const id of S.stock.concat(S.waste)){
     for (let f = 0; f < 4; f++) if (canFound(f, id)) return true;
     for (let d = 0; d < 7; d++) if (canTab(d, id)) return true;
   }
   return false;
-}
-let hintT = null;
-function hint(){
-  if (!S || won || dealing) return;
-  const m = findMove();
-  document.querySelectorAll('.hinted').forEach(n => n.classList.remove('hinted'));
-  document.querySelectorAll('.slot.hint').forEach(n => n.classList.remove('hint'));
-  clearTimeout(hintT);
-  if (!m){ toast('Aucun coup possible. Annulez ou lancez une nouvelle partie.', 3400); return; }
-  if (m.draw){
-    slots.stock.classList.add('hint');
-    toast(S.stock.length ? 'Piochez' : 'Remettez la pioche en jeu');
-  } else {
-    m.ids.forEach(id => nodes[id].classList.add('hinted'));
-    slots[(m.t.type === 'found' ? 'f' : 't') + m.t.k].classList.add('hint');
-  }
-  haptic();
-  hintT = setTimeout(() => {
-    document.querySelectorAll('.hinted').forEach(n => n.classList.remove('hinted'));
-    document.querySelectorAll('.slot.hint').forEach(n => n.classList.remove('hint'));
-  }, 2600);
 }
 function checkStuck(){
   if (won || stuckTold) return;
@@ -1530,17 +1507,49 @@ function update(){
   const complete = !S || S.found.every(f => f.length === 13);
   el('btn-finish').classList.toggle('show', !!S && !won && !complete && allUp());
   el('btn-undo').disabled = !history.length || won;
-  el('btn-hint').disabled = !S || won || dealing;
   const done = stats.daily[todayKey()];
   el('btn-daily').classList.toggle('done', !!done);
   label(el('btn-daily'), done ? 'Résolu' : 'Défi');
 }
 
 /* ================= nouvelle partie ================= */
+/* Cartes montées aux fondations, donc l'avancement réel de la partie. */
+const placedCards = () => S ? S.found.reduce((a, f) => a + f.length, 0) : 0;
+/* Une partie perdue rapporte quand même de l'expérience, au prorata des cartes
+   placées : il reste 52 moins ce total à monter, et plus on s'en approche plus
+   la consolation est grande. */
+const consolationXp = () => S ? Math.round(placedCards() * XP.perCard * drawMult(S.draw)) : 0;
+
 function countAbandon(){
-  if (S && !won && S.moves > 0){
-    stats.played++; stats.streak = 0; saveStats();
+  if (!S || won || S.moves <= 0) return 0;
+  const placed = placedCards(), xp = consolationXp();
+  stats.played++; stats.streak = 0; saveStats();
+  if (xp <= 0) return 0;
+  const before = myLevel();
+  prog.xp += xp; Store.set(K.prog, prog);
+  const after = myLevel();
+  renderXp();
+  let msg = `Partie abandonnée. +${num(xp)} XP pour ${placed} carte${placed > 1 ? 's' : ''} placée${placed > 1 ? 's' : ''}.`;
+  if (after > before){
+    /* Un niveau franchi sur une défaite mérite quand même son annonce. */
+    const got = [];
+    for (const kind of ['theme','back'])
+      for (const it of COSMETICS[kind])
+        if (it.lvl > before && it.lvl <= after) got.push(it.name);
+    msg += ` Niveau ${after} atteint.` + (got.length ? ` ${got.join(', ')} débloqué.` : '');
   }
+  toast(msg, 4400);
+  return xp;
+}
+/* Abandon explicite depuis la boîte de pause : on solde la partie et on rentre
+   à l'accueil sans donne en attente. */
+function forfeit(){
+  if (!S || won) return;
+  countAbandon();
+  stopCelebrate(); stopClock();
+  S = null; history = []; drag = null; dealing = false;
+  dealGen++; Store.del(K.state);
+  update(); goHome();
 }
 function newGame(opts){
   const o = opts || {};
@@ -1552,7 +1561,7 @@ function newGame(opts){
   seconds = 0; won = false; history = []; drag = null; stuckTold = false; litKey = null;
   isDaily = !!o.daily; dayKey = isDaily ? todayKey() : null;
   S = blank(); dealt = new Set();
-  nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly','hinted'); });
+  nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly'); });
   lastT.length = 0; lastZ.length = 0;
 
   let rand = Math.random;
@@ -1591,11 +1600,14 @@ function requestNew(daily, btn){
   const b = btn || (daily ? el('btn-daily') : el('btn-new'));
   const risky = S && !won && S.moves > 0 && !dealing;
   const go = () => {
+    /* Si la donne en cours est sacrifiée, countAbandon annonce l'XP de
+       consolation : on ne recouvre pas ce message par celui du défi. */
+    const abandoned = !!(S && !won && S.moves > 0);
     newGame({ daily });
-    if (daily){
+    if (daily && !abandoned){
       const d = stats.daily[todayKey()];
       toast(d ? 'Défi du jour déjà résolu. Rejoué pour le plaisir.'
-              : `Défi du jour : la même donne pour tout le monde. ${num(XP.daily)} XP à la clé.`, 3400);
+              : `Défi du jour : la même donne pour tout le monde. ${num(dailyXp())} XP à la clé.`, 3400);
     }
   };
   if (!risky) return go();
@@ -1632,7 +1644,7 @@ function restore(saved){
   isDaily = !!saved.isDaily; dayKey = saved.dayKey || null;
   won = false; history = []; drag = null; stuckTold = false; dealing = false;
   dealt = new Set([...Array(52).keys()]);
-  nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly','hinted'); });
+  nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly'); });
   lastT.length = 0; lastZ.length = 0;
   geometry(); layout(); update();
   if (S.moves > 0) start();     /* la partie reprise redémarre son horloge */
@@ -1658,16 +1670,20 @@ function closeSheets(){
 
 /* ================= menu d'accueil ================= */
 let menuOpen = false;
-function openMenu(){
+/* L'accueil est un écran à part entière : body.home escamote le bandeau, le
+   plateau et le dock, il ne reste que le fond ambiant et le menu. */
+function goHome(){
   closeSheets();
-  stopClock();                       /* l'horloge ne tourne pas dans le menu */
+  stopClock();                     /* le chrono ne tourne pas hors du jeu */
   renderXp(true); renderMenu();
+  document.body.classList.add('home');
   el('menu').classList.add('show');
   menuOpen = true;
   if (S && !won) Store.set(K.state, snapState());
 }
 function hideMenu(){
   el('menu').classList.remove('show');
+  document.body.classList.remove('home');
   menuOpen = false;
   disarmAll();
 }
@@ -1675,11 +1691,26 @@ function closeMenu(){
   hideMenu();
   if (S && !won && S.moves > 0) start();
 }
+/* Le bouton Menu du dock ne quitte jamais une partie en silence : il demande
+   d'abord pause ou abandon. */
+function askLeave(){
+  if (!S || won || dealing) return goHome();
+  const placed = placedCards(), xp = consolationXp();
+  el('pause-sub').textContent = `${fmt(seconds)} · ${S.moves} coups · ${placed} carte${placed > 1 ? 's' : ''} sur 52 placée${placed > 1 ? 's' : ''}.`;
+  el('p-forfeit-sub').textContent = xp > 0
+    ? `Compte comme une défaite, mais rapporte ${num(xp)} XP`
+    : 'Compte comme une défaite';
+  openSheet('pause', true);
+}
 function renderMenu(){
   const live = !!S && !won;
   el('m-resume').hidden = !live;
   el('m-close').hidden = !live;
-  if (live) el('m-resume-sub').textContent = `${fmt(seconds)} · ${S.moves} coups`;
+  if (live){
+    const placed = placedCards();
+    el('m-resume-sub').textContent =
+      `${fmt(seconds)} · ${S.moves} coups · ${placed} carte${placed > 1 ? 's' : ''} sur 52`;
+  }
   el('m-new-sub').textContent = live
     ? 'Abandonne la partie en cours'
     : `Tirage à ${prefs.draw === 1 ? 'une carte' : 'trois cartes'} · ${xpRateLabel(prefs.draw)}`;
@@ -1777,13 +1808,14 @@ el('btn-new').onclick = () => requestNew(false);
 el('btn-daily').onclick = () => requestNew(true);
 el('btn-again').onclick = () => newGame({ daily:isDaily });
 el('btn-undo').onclick = undo;
-el('btn-hint').onclick = hint;
 el('btn-finish').onclick = finish;
-el('btn-menu').onclick = () => menuOpen ? closeMenu() : openMenu();
+el('btn-menu').onclick = askLeave;
 el('btn-lvl').onclick = () => openSheet('cos');
-el('btn-won-menu').onclick = () => { closeSheets(); openMenu(); };
+el('btn-won-menu').onclick = () => { closeSheets(); goHome(); };
 el('m-resume').onclick = closeMenu;
 el('m-close').onclick = closeMenu;
+el('p-pause').onclick = () => { closeSheets(); goHome(); };
+el('p-forfeit').onclick = () => { closeSheets(); forfeit(); };
 el('m-new').onclick = () => requestNew(false, el('m-new'));
 el('m-daily').onclick = () => requestNew(true, el('m-daily'));
 el('m-cos').onclick = () => openSheet('cos');
@@ -1835,7 +1867,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape'){
     if (openKey) closeSheets();
     else if (menuOpen && S) closeMenu();
-    else if (!menuOpen) openMenu();
+    else if (!menuOpen) askLeave();
     return;
   }
   if (openKey || menuOpen) return;
@@ -1843,7 +1875,6 @@ addEventListener('keydown', e => {
   if (tag === 'BUTTON' || e.target.classList.contains('sw')) return;
   if (e.key === 'z' || e.key === 'u') undo();
   else if (e.key === 'n') requestNew(false);
-  else if (e.key === 'h') hint();
   else if (e.key === ' ' || e.key === 'Enter'){ draw(); e.preventDefault(); }
 });
 document.addEventListener('gesturestart', e => e.preventDefault());
@@ -1899,7 +1930,7 @@ new ResizeObserver(() => {
   update();
   /* On ouvre toujours sur le menu : c'est là que vit la progression. */
   tipPending = !seen;
-  openMenu();
+  goHome();
 })();
 
 })();
@@ -1907,7 +1938,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.2.0';
+window.APP_VERSION = '1.3.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
