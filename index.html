@@ -391,6 +391,7 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
 .mb:active{transform:scale(.98)}
 .mb:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .mb[hidden]{display:none}
+.mb:disabled{opacity:.42;cursor:default;transform:none}
 @media (hover:hover){ .mb:hover{background:rgba(255,255,255,.16)} .mb.primary:hover{filter:brightness(1.1)} }
 .mstack{display:flex;flex-direction:column;gap:9px;margin-top:4px}
 .mrow{display:flex;gap:9px}
@@ -753,6 +754,196 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script id="sol-solver" type="text/plain">
+/* ==========================================================================
+   Solveur Klondike, exécuté dans un worker. Sert uniquement à garantir que la
+   donne du défi du jour est gagnable.
+
+   Jeu « éclairé » : le solveur voit les cartes face cachée, ce qui est la
+   définition usuelle d'une donne soluble. Il est borné en NOMBRE DE NŒUDS et
+   jamais en temps, sans quoi un téléphone lent et un ordinateur rapide
+   aboutiraient à des donnes différentes pour la même journée.
+
+   Il est volontairement conservateur : il ne répond « gagnable » que s'il a
+   trouvé une suite de coups légaux menant les 52 cartes aux fondations. Il
+   échoue donc sur des donnes pourtant solubles, ce qui est sans conséquence
+   ici puisqu'on passe alors simplement à la graine suivante.
+
+   ATTENTION : dailySeed, rng, shuffle et dealFrom sont dupliqués du script
+   principal et doivent rester identiques, sinon la donne vérifiée ne serait
+   pas celle qui est jouée.
+   ========================================================================== */
+const dailySeed = (n, off) => (Math.imul(n, 2654435761) ^ Math.imul(off + 1, 40503)) >>> 0;
+function rng(seed){
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function shuffle(a, rand){
+  for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(rand() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+const RANK = id => (id % 13) + 1;
+const SUIT = id => (id / 13) | 0;
+const RED  = s => s === 1 || s === 2;
+
+function buildDeal(seed){
+  const deck = shuffle(Array.from({length:52}, (_, i) => i), rng(seed));
+  const tab = [[],[],[],[],[],[],[]], stock = [];
+  let i = 0;
+  for (let row = 0; row < 7; row++)
+    for (let k = row; k < 7; k++) tab[k].push(deck[i++]);
+  for (; i < 52; i++) stock.push(deck[i]);
+  return { tab, stock, down:[0,1,2,3,4,5,6] };
+}
+
+function solvable(deal, drawN, budget){
+  let nodes = 0;
+  const seen = new Set();
+
+  /* Une carte monte aux fondations sans regret si les deux fondations de
+     couleur opposée ont atteint son rang moins un : plus aucune carte du
+     tableau ne pourra avoir besoin d'elle comme support. */
+  function safe(id, found){
+    const r = RANK(id);
+    if (r <= 2) return true;
+    const s = SUIT(id);
+    const o1 = RED(s) ? 0 : 1, o2 = RED(s) ? 3 : 2;
+    return found[o1] >= r - 1 && found[o2] >= r - 1;
+  }
+  /* Les sept colonnes sont interchangeables : on trie leurs signatures pour
+     n'explorer qu'une fois deux dispositions équivalentes. */
+  function key(tab, down, found, stock, waste){
+    const parts = [];
+    for (let k = 0; k < 7; k++){
+      let s = String.fromCharCode(48 + down[k]);
+      const p = tab[k];
+      for (let i = 0; i < p.length; i++) s += String.fromCharCode(48 + p[i]);
+      parts.push(s);
+    }
+    parts.sort();
+    let t = String.fromCharCode(48+found[0], 48+found[1], 48+found[2], 48+found[3], 48+waste.length);
+    for (let i = 0; i < stock.length; i++) t += String.fromCharCode(48 + stock[i]);
+    for (let i = 0; i < waste.length; i++) t += String.fromCharCode(48 + waste[i]);
+    return t + '|' + parts.join('.');
+  }
+
+  function dfs(tab, down, found, stock, waste, depth){
+    for (let again = true; again; ){
+      again = false;
+      for (let k = 0; k < 7; k++){
+        const p = tab[k];
+        if (p.length <= down[k]) continue;
+        const id = p[p.length-1], s = SUIT(id);
+        if (found[s] === RANK(id) - 1 && safe(id, found)){
+          p.pop(); found[s] = RANK(id); again = true;
+          if (p.length === down[k] && down[k] > 0) down[k]--;
+        }
+      }
+      if (waste.length){
+        const id = waste[waste.length-1], s = SUIT(id);
+        if (found[s] === RANK(id) - 1 && safe(id, found)){
+          waste.pop(); found[s] = RANK(id); again = true;
+        }
+      }
+    }
+    if (found[0]===13 && found[1]===13 && found[2]===13 && found[3]===13) return true;
+    if (++nodes > budget) return false;
+    if (depth > 200) return false;
+    const kk = key(tab, down, found, stock, waste);
+    if (seen.has(kk)) return false;
+    seen.add(kk);
+
+    const moves = [];
+    for (let k = 0; k < 7; k++){
+      const p = tab[k], d = down[k];
+      if (p.length <= d) continue;
+      let i0 = p.length - 1;
+      while (i0 > d){
+        const a = p[i0-1], b = p[i0];
+        if (RANK(b) === RANK(a) - 1 && RED(SUIT(a)) !== RED(SUIT(b))) i0--; else break;
+      }
+      for (let i = i0; i < p.length; i++){
+        const head = p[i], all = (i === d);
+        for (let t = 0; t < 7; t++){
+          if (t === k) continue;
+          const q = tab[t];
+          if (!q.length){
+            if (RANK(head) !== 13) continue;
+            if (all && d === 0) continue;          /* permutation stérile */
+          } else {
+            const top = q[q.length-1];
+            if (RANK(head) !== RANK(top) - 1 || RED(SUIT(head)) === RED(SUIT(top))) continue;
+          }
+          moves.push({ m:'tt', k, i, to:t, p: (all && d > 0) ? 0 : (all ? 1 : 4), n: p.length - i });
+        }
+      }
+    }
+    if (waste.length){
+      const id = waste[waste.length-1];
+      for (let t = 0; t < 7; t++){
+        const q = tab[t];
+        if (!q.length){ if (RANK(id) === 13) moves.push({ m:'wt', to:t, p:2, n:1 }); continue; }
+        const top = q[q.length-1];
+        if (RANK(id) === RANK(top) - 1 && RED(SUIT(id)) !== RED(SUIT(top))) moves.push({ m:'wt', to:t, p:2, n:1 });
+      }
+      const s = SUIT(id);
+      if (found[s] === RANK(id) - 1) moves.push({ m:'wf', p:3, n:1 });
+    }
+    for (let k = 0; k < 7; k++){
+      const p = tab[k];
+      if (p.length <= down[k]) continue;
+      const id = p[p.length-1], s = SUIT(id);
+      if (found[s] === RANK(id) - 1) moves.push({ m:'tf', k, p:3, n:1 });
+    }
+    if (stock.length || waste.length) moves.push({ m:'dr', p:5, n:0 });
+
+    moves.sort((a, b) => a.p - b.p || b.n - a.n);
+
+    for (let z = 0; z < moves.length; z++){
+      const mv = moves[z];
+      const nt = [tab[0].slice(),tab[1].slice(),tab[2].slice(),tab[3].slice(),
+                  tab[4].slice(),tab[5].slice(),tab[6].slice()];
+      const nd = down.slice(), nf = found.slice(), ns = stock.slice(), nw = waste.slice();
+      if (mv.m === 'tt'){
+        const seg = nt[mv.k].splice(mv.i);
+        for (let y = 0; y < seg.length; y++) nt[mv.to].push(seg[y]);
+        if (nt[mv.k].length === nd[mv.k] && nd[mv.k] > 0) nd[mv.k]--;
+      } else if (mv.m === 'wt'){
+        nt[mv.to].push(nw.pop());
+      } else if (mv.m === 'wf'){
+        const id = nw.pop(); nf[SUIT(id)] = RANK(id);
+      } else if (mv.m === 'tf'){
+        const p = nt[mv.k], id = p.pop();
+        nf[SUIT(id)] = RANK(id);
+        if (p.length === nd[mv.k] && nd[mv.k] > 0) nd[mv.k]--;
+      } else {
+        if (!ns.length){ while (nw.length) ns.push(nw.pop()); }
+        else { for (let n = 0; n < drawN && ns.length; n++) nw.push(ns.pop()); }
+      }
+      if (dfs(nt, nd, nf, ns, nw, depth + 1)) return true;
+    }
+    return false;
+  }
+
+  return dfs(deal.tab.map(a => a.slice()), deal.down.slice(), [0,0,0,0], deal.stock.slice(), [], 0);
+}
+
+/* La vérification se fait toujours à trois cartes, le mode le plus exigeant,
+   pour que tout le monde reçoive la même donne quel que soit son réglage. */
+onmessage = e => {
+  const { dayNum, budget, maxTries } = e.data;
+  for (let off = 0; off < maxTries; off++){
+    if (solvable(buildDeal(dailySeed(dayNum, off)), 3, budget)){
+      postMessage({ off, tries: off + 1 });
+      return;
+    }
+  }
+  postMessage({ off:-1, tries: maxTries });
+};
+</script>
+
 <script>
 (() => {
 'use strict';
@@ -800,7 +991,11 @@ const Store = (() => {
   };
 })();
 const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1',
-            seen:'sol.seen.v1', prog:'sol.prog.v1' };
+            seen:'sol.seen.v1', prog:'sol.prog.v1', daily:'sol.daily.v1' };
+/* Graine du défi du jour. Doit rester identique à celle du worker, sinon la
+   donne vérifiée ne serait pas celle qui est jouée. */
+const dailySeed = (n, off) => (Math.imul(n, 2654435761) ^ Math.imul(off + 1, 40503)) >>> 0;
+const SOLVE_BUDGET = 50000, SOLVE_TRIES = 60;
 
 /* ================= constantes ================= */
 const SUITS = ['spades','hearts','diamonds','clubs'];
@@ -870,6 +1065,9 @@ let isDaily = false, dayKey = null, G = {};
 let prefs = { draw:1, lefty:0, haptic:1, theme:'aurore', back:'halo', tall:1 };
 let stats = { played:0, won:0, streak:0, bestStreak:0, bestTime:0, bestMoves:0, daily:{} };
 let prog = { xp:0, lastWinDay:null, granted:[] };
+/* null tant que la donne du jour n'est pas vérifiée, -1 si la vérification a
+   échoué ou n'est pas disponible, sinon le décalage de graine retenu. */
+let dailyOff = null, dailyPending = false, dailyWantsStart = false;
 let booted = false, stuckTold = false, dealing = false, dealGen = 0, tipPending = false;
 
 /* ================= utilitaires ================= */
@@ -1359,10 +1557,13 @@ function anyMoveAtAll(){
 }
 function checkStuck(){
   if (won || stuckTold) return;
-  if (S.stock.length || S.waste.length) return;
+  /* On ne sort plus dès qu'il reste une carte en pioche : anyMoveAtAll()
+     examine déjà chacune d'elles. Si aucune ne peut aller nulle part et
+     qu'aucun coup n'existe sur le tableau, recycler la pioche ne changera
+     rien, et le joueur mérite de l'apprendre plutôt que de tourner en rond. */
   if (anyMoveAtAll()) return;
   stuckTold = true;
-  toast('Plus aucun coup possible. Annulez, ou repartez sur une nouvelle donne.', 4200);
+  toast('Plus aucun coup possible, même en repiochant. Annulez, ou repartez sur une nouvelle donne.', 4600);
 }
 
 /* ================= fin et victoire ================= */
@@ -1529,6 +1730,7 @@ function update(){
   el('btn-undo').disabled = !history.length || won;
   const done = stats.daily[todayKey()];
   el('btn-daily').classList.toggle('done', !!done);
+  el('btn-daily').disabled = dailyPending;
   label(el('btn-daily'), done ? 'Résolu' : 'Défi');
 }
 
@@ -1587,7 +1789,7 @@ function newGame(opts){
   let rand = Math.random;
   if (isDaily){
     const n = parseInt(dayKey.replace(/-/g, ''), 10);
-    rand = rng(n * 2654435761 % 4294967296);
+    rand = rng(dailySeed(n, dailyOff > 0 ? dailyOff : 0));
   }
   const deck = shuffle([...Array(52).keys()], rand);
   let i = 0; const order = [];
@@ -1618,6 +1820,13 @@ function newGame(opts){
 }
 function requestNew(daily, btn){
   const b = btn || (daily ? el('btn-daily') : el('btn-new'));
+  if (daily && dailyPending){
+    /* On ne lance pas le défi avant de savoir quelle donne servir : sinon deux
+       joueurs ne joueraient pas la même. */
+    dailyWantsStart = true;
+    toast('La donne du jour est en cours de vérification. Elle part dès qu’elle est prête.', 3600);
+    return;
+  }
   const risky = S && !won && S.moves > 0 && !dealing;
   const go = () => {
     /* Si la donne en cours est sacrifiée, countAbandon annonce l'XP de
@@ -1688,6 +1897,51 @@ function closeSheets(){
   openKey = null;
 }
 
+/* ================= donne du jour garantie gagnable =================
+   On essaie la graine du jour, puis jour+1, jour+2… jusqu'à en trouver une que
+   le solveur sait mener au bout. La recherche est déterministe et bornée en
+   nombre de nœuds : tous les appareils retiennent donc la même donne. Le
+   résultat est mis en cache pour la journée.
+   ================================================================== */
+function startDailySearch(){
+  const day = todayKey();
+  const dayNum = parseInt(day.replace(/-/g, ''), 10);
+  const src = document.getElementById('sol-solver');
+  let w = null;
+  try {
+    w = new Worker(URL.createObjectURL(new Blob([src.textContent], { type:'text/javascript' })));
+  } catch (e) { w = null; }
+  if (!w){
+    /* Pas de worker disponible : on sert la donne non vérifiée plutôt que de
+       priver le joueur du défi. */
+    dailyOff = -1; dailyPending = false; onDailyReady(day);
+    return;
+  }
+  dailyPending = true;
+  w.onmessage = ev => {
+    dailyOff = ev.data.off;
+    dailyPending = false;
+    Store.set(K.daily, { day, off:dailyOff });
+    w.terminate();
+    onDailyReady(day);
+  };
+  w.onerror = () => {
+    dailyOff = -1; dailyPending = false;
+    try { w.terminate(); } catch (e) {}
+    onDailyReady(day);
+  };
+  w.postMessage({ dayNum, budget:SOLVE_BUDGET, maxTries:SOLVE_TRIES });
+}
+function onDailyReady(day){
+  renderMenu();
+  update();
+  if (dailyWantsStart){
+    dailyWantsStart = false;
+    if (menuOpen || !S) requestNew(true, el('m-daily'));
+    else toast('La donne du jour est prête.', 2600);
+  }
+}
+
 /* ================= menu d'accueil ================= */
 let menuOpen = false;
 /* L'accueil est un écran à part entière : body.home escamote le bandeau, le
@@ -1736,9 +1990,16 @@ function renderMenu(){
     : `Tirage à ${prefs.draw === 1 ? 'une carte' : 'trois cartes'} · ${xpRateLabel(prefs.draw)}`;
   const d = stats.daily[todayKey()];
   el('m-daily').classList.toggle('done', !!d);
-  el('m-daily-sub').textContent = d
-    ? `Résolu en ${fmt(d.time)} · ${num(dailyXp())} XP la prochaine fois`
-    : `La même donne pour tout le monde · ${num(dailyXp())} XP`;
+  el('m-daily').disabled = dailyPending;
+  /* On ne promet « gagnable » que si le solveur l'a effectivement prouvé.
+     dailyOff vaut -1 quand la vérification n'a pas abouti : la donne est alors
+     servie telle quelle, et le sous-titre ne prétend plus rien. */
+  el('m-daily-sub').textContent = dailyPending
+    ? 'Vérification que la donne est gagnable…'
+    : d ? `Résolu en ${fmt(d.time)} · ${num(dailyXp())} XP la prochaine fois`
+    : dailyOff >= 0
+      ? `Donne gagnable, la même pour tout le monde · ${num(dailyXp())} XP`
+      : `La même donne pour tout le monde · ${num(dailyXp())} XP`;
 }
 function renderStats(){
   const rate = stats.played ? Math.round(stats.won / stats.played * 100) : 0;
@@ -1920,9 +2181,9 @@ new ResizeObserver(() => {
 /* ================= démarrage ================= */
 (async function boot(){
   buildCards(); buildSlots();
-  const [p, st, saved, seen, pr] = await Promise.all([
+  const [p, st, saved, seen, pr, dy] = await Promise.all([
     Store.get(K.prefs), Store.get(K.stats), Store.get(K.state),
-    Store.get(K.seen), Store.get(K.prog)
+    Store.get(K.seen), Store.get(K.prog), Store.get(K.daily)
   ]);
   if (p) prefs = Object.assign(prefs, p);
   if (st) stats = Object.assign(stats, st, { daily: st.daily || {} });
@@ -1951,6 +2212,16 @@ new ResizeObserver(() => {
   /* On ouvre toujours sur le menu : c'est là que vit la progression. */
   tipPending = !seen;
   goHome();
+
+  /* La vérification de la donne du jour part en arrière-plan, dans un worker,
+     pendant que le joueur lit l'accueil. Le résultat de la veille ne sert à
+     rien : on ne le réutilise que s'il porte sur aujourd'hui. */
+  if (dy && dy.day === todayKey() && typeof dy.off === 'number'){
+    dailyOff = dy.off; renderMenu();
+  } else {
+    startDailySearch();
+    renderMenu();
+  }
 })();
 
 })();
@@ -1958,7 +2229,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.3.2';
+window.APP_VERSION = '1.4.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
