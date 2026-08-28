@@ -127,6 +127,35 @@ body{
 .brand svg{width:16px;height:16px;fill:#fff;opacity:.9}
 .brand b{font-size:16.5px;font-weight:600;letter-spacing:-.02em;opacity:.95}
 
+/* ---------- niveau et expérience ---------- */
+.badge{
+  flex:0 0 auto;display:grid;place-items:center;
+  width:26px;height:26px;border-radius:50%;
+  background:var(--accent);color:#fff;
+  font-family:var(--round);font-size:12.5px;font-weight:700;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.42), 0 2px 8px rgba(0,0,0,.28);
+}
+.xpbar{height:5px;border-radius:999px;background:rgba(255,255,255,.15);overflow:hidden}
+.xpbar i{display:block;height:100%;width:0;border-radius:999px;
+  background:var(--accent);
+  box-shadow:0 0 10px -2px var(--accent), inset 0 1px 0 rgba(255,255,255,.45);
+  transition:width .9s cubic-bezier(.22,1,.36,1)}
+.xpbar.snap i{transition:none}
+.xpbar.big{height:9px}
+
+.lvl{
+  flex:0 0 auto;display:flex;align-items:center;gap:9px;
+  padding:5px 13px 5px 5px;border-radius:999px;cursor:pointer;touch-action:manipulation;
+  background:rgba(255,255,255,.1);border:1px solid var(--hair);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16);
+  transition:transform .18s cubic-bezier(.34,1.4,.64,1), background .18s;
+}
+.lvl .xpbar{width:56px}
+.lvl:active{transform:scale(.95)}
+.lvl:focus-visible{outline:2px solid #fff;outline-offset:3px}
+@media (hover:hover){ .lvl:hover{background:rgba(255,255,255,.17)} }
+
 /* Ni la jauge ni le dock ne portent de backdrop-filter : ils reposent sur la
    partie pleine du fond, le flou n'y produisait rien de visible et coûtait une
    passe GPU chacun. Sept passes en moins par image sur iPhone. */
@@ -212,13 +241,17 @@ body{
 .face.red{color:var(--red)}
 .face::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(150deg,rgba(255,255,255,.6) 0%,rgba(255,255,255,0) 40%)}
+/* Le motif du dos est une simple variable : la même valeur habille les 52
+   cartes et sert d'aperçu dans la galerie, sans dupliquer une ligne de CSS. */
 .back{transform:rotateY(180deg) translateZ(.6px);
-  background:linear-gradient(150deg,var(--back1) 0%,var(--back2) 52%,var(--back3) 100%);
+  background-image:var(--bkimg, none),
+                   linear-gradient(150deg,var(--back1) 0%,var(--back2) 52%,var(--back3) 100%);
   box-shadow:0 1px 2px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.24)}
 .back::after{content:"";position:absolute;inset:7%;border-radius:calc(var(--radius) * .7);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.3);
   background:linear-gradient(160deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 58%)}
-.back::before{content:"";position:absolute;inset:0;margin:auto;width:24%;aspect-ratio:1;border-radius:50%;
+.back::before{content:"";display:var(--bkdot, block);
+  position:absolute;inset:0;margin:auto;width:24%;aspect-ratio:1;border-radius:50%;
   background:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.55)}
 
 /* index et figure */
@@ -290,6 +323,119 @@ body{
 .finish.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
 .finish.show:active{transform:translate(-50%,0) scale(.95)}
 
+/* ---------- menu d'accueil ---------------------------------------------------
+   Fond quasi opaque plutôt qu'un flou plein écran : le plateau n'a pas besoin
+   d'être lisible derrière, et une passe de flou de cette taille se paie cher
+   sur iPhone.
+   -------------------------------------------------------------------------- */
+.menu{
+  position:fixed;inset:0;z-index:400;
+  display:flex;align-items:center;justify-content:center;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:calc(20px + env(safe-area-inset-top)) 22px calc(20px + env(safe-area-inset-bottom));
+  background:rgba(var(--bg-rgb),.94);
+  opacity:0;pointer-events:none;transition:opacity .3s ease;
+}
+.menu.show{opacity:1;pointer-events:auto}
+.menu-in{width:100%;max-width:352px;margin:auto;display:flex;flex-direction:column;gap:9px}
+/* Croix de retour : le bouton du bandeau est recouvert par le menu, il faut
+   donc une sortie visible ici. Masquée quand il n'y a pas de partie à
+   reprendre, pour ne pas proposer un retour vers un plateau vide. */
+.menu .mclose{position:absolute;top:calc(14px + env(safe-area-inset-top));
+              right:calc(14px + env(safe-area-inset-right));z-index:2}
+.menu .mclose[hidden]{display:none}
+.crest{display:flex;align-items:center;justify-content:center;gap:11px;
+       margin:0 0 18px;opacity:.96}
+.crest svg{width:26px;height:26px;fill:#fff}
+.crest b{font-size:25px;font-weight:640;letter-spacing:-.035em}
+
+.prog{padding:16px 18px 15px;border-radius:22px;margin-bottom:5px;
+      background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.prog-head{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.prog-head .badge{width:44px;height:44px;font-size:19px}
+.prog-head b{display:block;font-size:16px;font-weight:600;letter-spacing:-.02em}
+.prog-head i{display:block;font-style:normal;font-size:12px;margin-top:1px;
+             color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums}
+.prog-next{display:flex;align-items:center;gap:7px;margin-top:12px;
+           font-size:12px;color:rgba(255,255,255,.55);line-height:1.35}
+.prog-next svg{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;
+               stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.mb{
+  display:flex;align-items:center;gap:13px;width:100%;text-align:left;
+  padding:15px 17px;border-radius:19px;cursor:pointer;touch-action:manipulation;
+  font-family:var(--ui);color:#fff;
+  background:rgba(255,255,255,.09);border:1px solid var(--hair);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .18s cubic-bezier(.34,1.4,.64,1), background .18s;
+}
+.mb svg{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:#fff;stroke-width:1.7;
+        stroke-linecap:round;stroke-linejoin:round}
+.mb b{display:block;font-size:15.5px;font-weight:590;letter-spacing:-.015em}
+.mb small{display:block;font-size:11.5px;font-weight:400;margin-top:2px;
+          color:rgba(255,255,255,.5)}
+.mb.primary{background:var(--accent);border-color:rgba(255,255,255,.24)}
+.mb.primary small{color:rgba(255,255,255,.78)}
+.mb.armed{background:rgba(255,105,97,.34);border-color:rgba(255,140,130,.5)}
+.mb.done svg{stroke:#30D158}
+.mb:active{transform:scale(.98)}
+.mb:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.mb[hidden]{display:none}
+@media (hover:hover){ .mb:hover{background:rgba(255,255,255,.16)} .mb.primary:hover{filter:brightness(1.1)} }
+.mrow{display:flex;gap:9px}
+.mrow .mb{flex:1 1 0;min-width:0;flex-direction:column;align-items:center;
+          text-align:center;gap:7px;padding:14px 6px}
+.mrow .mb b{font-size:12.5px;font-weight:560}
+
+/* ---------- galerie de cosmétiques ---------- */
+.cos-sec h4{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+            color:rgba(255,255,255,.42);margin:16px 0 11px}
+.cos-sec:first-of-type h4{margin-top:2px}
+.cos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:10px}
+.cos{position:relative;padding:0;border:0;background:none;cursor:pointer;
+     text-align:center;touch-action:manipulation}
+.cos .sw2{position:relative;height:64px;border-radius:14px;overflow:hidden;
+          box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18);transition:.2s}
+.cos.on .sw2{box-shadow:inset 0 0 0 2px #fff, 0 0 0 3px rgba(255,255,255,.16)}
+.cos > span{display:block;margin-top:6px;font-size:11px;font-weight:500;
+            color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cos.locked .sw2::after{content:"";position:absolute;inset:0;background:rgba(6,8,16,.68)}
+.cos.locked > span{color:rgba(255,255,255,.38)}
+.cos .lk{position:absolute;inset:0;display:none;place-items:center;align-content:center;
+         gap:3px;z-index:1}
+.cos.locked .lk{display:grid}
+.cos .lk svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:1.8;
+             stroke-linecap:round;stroke-linejoin:round;opacity:.92;justify-self:center}
+.cos .lk em{font-style:normal;font-size:9.5px;font-weight:650;letter-spacing:.02em;
+            color:rgba(255,255,255,.86)}
+@media (hover:hover){ .cos:not(.on):hover .sw2{transform:scale(1.04)} }
+
+/* ---------- bloc d'expérience de la feuille de victoire ---------- */
+.xpwrap{padding:15px 16px 14px;border-radius:19px;margin:2px 0 4px;
+        background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+.xphead{display:flex;align-items:center;gap:11px;margin-bottom:11px}
+.xphead .badge{width:36px;height:36px;font-size:16px}
+.xphead b{display:block;font-size:14px;font-weight:600;letter-spacing:-.02em}
+.xphead i{display:block;font-style:normal;font-size:11.5px;margin-top:1px;
+          color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums}
+.xphead em{margin-left:auto;font-style:normal;font-family:var(--round);
+           font-size:16px;font-weight:700;letter-spacing:-.03em;color:#5FE882}
+.xplist{list-style:none;margin:12px 0 0;display:flex;flex-direction:column;gap:6px}
+.xplist li{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;
+           color:rgba(255,255,255,.62)}
+.xplist li b{font-weight:600;color:rgba(255,255,255,.85);font-variant-numeric:tabular-nums}
+.xplist li.mult{margin-top:3px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);
+                color:rgba(255,184,97,.8)}
+.xplist li.mult b{color:#FFB861}
+.unlock{display:flex;align-items:center;gap:11px;margin-top:13px;padding:12px 14px;
+        border-radius:15px;background:rgba(48,209,88,.14);
+        box-shadow:inset 0 0 0 1px rgba(95,232,130,.32)}
+.unlock[hidden]{display:none}
+.unlock .sw2{width:34px;height:46px;flex:0 0 auto;border-radius:8px;
+             box-shadow:inset 0 0 0 1px rgba(255,255,255,.24)}
+.unlock b{display:block;font-size:13.5px;font-weight:600;letter-spacing:-.015em;color:#B7F5C8}
+.unlock small{display:block;font-size:11.5px;margin-top:2px;color:rgba(183,245,200,.7)}
+
 /* ---------- feuilles ---------- */
 .scrim{position:fixed;inset:0;z-index:500;background:rgba(4,6,14,.52);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
@@ -339,11 +485,6 @@ body{
   background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:.24s cubic-bezier(.34,1.5,.64,1)}
 .sw.on{background:var(--accent)}
 .sw.on::after{transform:translateX(20px)}
-.themes{display:flex;gap:10px;flex-wrap:wrap;padding:2px 0 10px}
-.th{width:46px;height:46px;border-radius:15px;cursor:pointer;padding:0;border:0;
-    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18);transition:.2s;touch-action:manipulation}
-.th.on{box-shadow:inset 0 0 0 2px #fff, 0 0 0 3px rgba(255,255,255,.18)}
-@media (hover:hover){ .th:hover{transform:scale(1.07)} }
 .note{font-size:12px;color:rgba(255,255,255,.45);line-height:1.55;margin-top:6px}
 .danger{color:#FF7A72;background:rgba(255,105,97,.14);border-color:rgba(255,105,97,.32)}
 @media (hover:hover){ .danger:hover{background:rgba(255,105,97,.24)} }
@@ -428,16 +569,31 @@ body{
     <path d="M3.6 10h16.8M8.4 3.4v3.4M15.6 3.4v3.4"/>
   </symbol>
   <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 12.8l4.6 4.4L19 7"/></symbol>
+  <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24">
+    <rect x="5" y="10.4" width="14" height="10.4" rx="2.6"/>
+    <path d="M8.3 10.4V7.6a3.7 3.7 0 0 1 7.4 0v2.8"/>
+  </symbol>
+  <symbol id="ic-play" viewBox="0 0 24 24"><path d="M7 4.6l12 7.4-12 7.4z"/></symbol>
+  <symbol id="ic-palette" viewBox="0 0 24 24">
+    <path d="M12 20.5a8.5 8.5 0 1 1 8.5-8.5c0 2.3-1.9 3.4-3.6 3.4h-1.6a2 2 0 0 0-1.3 3.5 1.4 1.4 0 0 1-1 1.6"/>
+    <path d="M8.4 9.2h.01M12 7.4h.01M15.4 9.4h.01"/>
+  </symbol>
+  <symbol id="ic-spark" viewBox="0 0 24 24">
+    <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/>
+  </symbol>
 </svg>
 
 <header class="hud">
-  <div class="brand"><svg viewBox="0 0 100 100"><use href="#sp-spades"/></svg><b>Solitaire</b></div>
+  <button class="btn ico" id="btn-menu" aria-label="Menu"><svg viewBox="0 0 24 24"><use href="#ic-menu"/></svg></button>
+  <button class="lvl" id="btn-lvl" aria-label="Progression et cosmétiques">
+    <span class="badge" id="hud-lvl">1</span>
+    <span class="xpbar"><i id="hud-fill"></i></span>
+  </button>
   <div class="gauge">
     <div><b id="v-time" aria-label="Temps écoulé">0:00</b><i>Temps</i></div>
     <div><b id="v-moves" aria-label="Coups joués">0</b><i>Coups</i></div>
   </div>
-  <button class="btn ico" id="btn-stats" aria-label="Statistiques"><svg viewBox="0 0 24 24"><use href="#ic-chart"/></svg></button>
-  <button class="btn ico" id="btn-set" aria-label="Réglages"><svg viewBox="0 0 24 24"><use href="#ic-gear"/></svg></button>
 </header>
 
 <main class="table">
@@ -452,6 +608,49 @@ body{
   <button class="dk" id="btn-daily"><svg viewBox="0 0 24 24"><use href="#ic-cal"/></svg><span>Défi</span></button>
 </nav>
 
+<div class="menu" id="menu">
+  <button class="btn ico mclose" id="m-close" aria-label="Revenir à la partie">
+    <svg viewBox="0 0 24 24"><use href="#ic-x"/></svg>
+  </button>
+  <div class="menu-in">
+    <div class="crest"><svg viewBox="0 0 100 100"><use href="#sp-spades"/></svg><b>Solitaire</b></div>
+
+    <div class="prog">
+      <div class="prog-head">
+        <span class="badge" id="m-lvl">1</span>
+        <div><b id="m-lvltxt">Niveau 1</b><i id="m-xptxt">0 / 120 XP</i></div>
+      </div>
+      <div class="xpbar big"><i id="m-fill"></i></div>
+      <p class="prog-next" id="m-next"></p>
+    </div>
+
+    <button class="mb" id="m-resume" hidden>
+      <svg viewBox="0 0 24 24"><use href="#ic-play"/></svg>
+      <span><b>Reprendre la partie</b><small id="m-resume-sub"></small></span>
+    </button>
+    <button class="mb primary" id="m-new">
+      <svg viewBox="0 0 24 24"><use href="#ic-deck"/></svg>
+      <span><b>Nouvelle partie</b><small id="m-new-sub">Une donne au hasard</small></span>
+    </button>
+    <button class="mb" id="m-daily">
+      <svg viewBox="0 0 24 24"><use href="#ic-cal"/></svg>
+      <span><b>Défi du jour</b><small id="m-daily-sub"></small></span>
+    </button>
+
+    <div class="mrow">
+      <button class="mb" id="m-cos">
+        <svg viewBox="0 0 24 24"><use href="#ic-palette"/></svg><b>Cosmétiques</b>
+      </button>
+      <button class="mb" id="m-stats">
+        <svg viewBox="0 0 24 24"><use href="#ic-chart"/></svg><b>Statistiques</b>
+      </button>
+      <button class="mb" id="m-set">
+        <svg viewBox="0 0 24 24"><use href="#ic-gear"/></svg><b>Réglages</b>
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="scrim" id="scrim"></div>
 
 <section class="sheet" id="sheet-won" role="dialog" aria-modal="true" aria-label="Partie gagnée">
@@ -459,9 +658,33 @@ body{
   <h3 id="won-title">Gagné</h3>
   <p class="sub" id="won-sub"></p>
   <div class="grid" id="won-grid"></div>
+  <div class="xpwrap">
+    <div class="xphead">
+      <span class="badge" id="won-lvl">1</span>
+      <div><b id="won-lvltxt">Niveau 1</b><i id="won-xptxt"></i></div>
+      <em id="won-gain"></em>
+    </div>
+    <div class="xpbar big"><i id="won-fill"></i></div>
+    <ul class="xplist" id="won-xplist"></ul>
+    <div class="unlock" id="won-unlock" hidden></div>
+  </div>
   <div class="actions">
     <button class="btn primary" id="btn-again">Rejouer</button>
-    <button class="btn" id="btn-won-stats">Statistiques</button>
+    <button class="btn" id="btn-won-menu">Menu</button>
+  </div>
+</section>
+
+<section class="sheet" id="sheet-cos" role="dialog" aria-modal="true" aria-label="Cosmétiques">
+  <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
+  <h3>Cosmétiques</h3>
+  <p class="sub" id="cos-sub"></p>
+  <div class="cos-sec">
+    <h4>Thème de table</h4>
+    <div class="cos-grid" id="cos-themes"></div>
+  </div>
+  <div class="cos-sec">
+    <h4>Dos de carte</h4>
+    <div class="cos-grid" id="cos-backs"></div>
   </div>
 </section>
 
@@ -479,7 +702,7 @@ body{
   <h3>Réglages</h3>
   <p class="sub">Ajustez le jeu à votre main.</p>
   <div class="row">
-    <label>Tirage<small>Une carte est plus facile</small></label>
+    <label>Tirage<small>Une carte est plus facile, et ne rapporte que 35 % de l'XP</small></label>
     <div class="seg" id="seg-draw"><button data-v="1">1 carte</button><button data-v="3">3 cartes</button></div>
   </div>
   <div class="row">
@@ -493,10 +716,6 @@ body{
   <div class="row">
     <label>Éventail étalé<small>Occupe toute la hauteur de l'écran</small></label>
     <div class="sw" id="sw-tall" role="switch" tabindex="0" aria-label="Éventail étalé"></div>
-  </div>
-  <div class="row" style="flex-direction:column;align-items:stretch">
-    <label style="margin-bottom:10px">Thème de table</label>
-    <div class="themes" id="themes"></div>
   </div>
   <div class="row">
     <label>Effacer les statistiques<small>Irréversible</small></label>
@@ -554,20 +773,61 @@ const Store = (() => {
     }
   };
 })();
-const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1', seen:'sol.seen.v1' };
+const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1',
+            seen:'sol.seen.v1', prog:'sol.prog.v1' };
 
 /* ================= constantes ================= */
 const SUITS = ['spades','hearts','diamonds','clubs'];
 const COLOR = ['b','r','r','b'];
 const RANKS = ['','A','2','3','4','5','6','7','8','9','10','V','D','R'];
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ================= progression =================
+   Palier de L vers L+1 : 120 + 60 (L-1) XP, donc un cumul quadratique.
+   Niveau 5 vers six victoires, niveau 10 vers vingt-deux, niveau 30 vers
+   cent quatre-vingt-cinq. Les récompenses sont réparties sur deux pistes pour
+   qu'aucun palier intermédiaire ne soit vide.
+   ============================================== */
+const xpFor = L => 30 * (L - 1) * (L - 2) + 120 * (L - 1);
+function levelOf(xp){
+  let L = 1;
+  while (L < 400 && xpFor(L + 1) <= xp) L++;
+  return L;
+}
+const XP = { win:100, daily:250, fast:50, quick:25, streakStep:10, streakMax:100, firstToday:75 };
+/* Le tirage à une carte se gagne beaucoup plus souvent que celui à trois : il
+   ne rapporte donc qu'une fraction de l'expérience, sinon le mode facile
+   deviendrait la voie rapide vers tous les cosmétiques. */
+const drawMult = d => d === 1 ? .35 : 1;
+const xpRateLabel = d => d === 1 ? '35 % d’XP' : 'XP complet';
+const dailyXp = () => Math.round(XP.daily * drawMult(prefs.draw));
+
 const THEMES = [
-  { id:'aurore',     name:'Aurore',     css:'linear-gradient(135deg,#6B4BFF,#00A8E8 55%,#FF4D9D)' },
-  { id:'minuit',     name:'Minuit',     css:'linear-gradient(135deg,#1E3A8A,#0E7490 55%,#4C1D95)' },
-  { id:'menthe',     name:'Menthe',     css:'linear-gradient(135deg,#0FA36B,#12B5C9 55%,#7BD389)' },
-  { id:'crepuscule', name:'Crépuscule', css:'linear-gradient(135deg,#F0592B,#C0298C 55%,#FFB347)' },
-  { id:'ardoise',    name:'Ardoise',    css:'linear-gradient(135deg,#3A4152,#5A6478 55%,#8B94A8)' }
+  { id:'aurore',     name:'Aurore',     lvl:0,  css:'linear-gradient(135deg,#6B4BFF,#00A8E8 55%,#FF4D9D)' },
+  { id:'minuit',     name:'Minuit',     lvl:5,  css:'linear-gradient(135deg,#1E3A8A,#0E7490 55%,#4C1D95)' },
+  { id:'menthe',     name:'Menthe',     lvl:10, css:'linear-gradient(135deg,#0FA36B,#12B5C9 55%,#7BD389)' },
+  { id:'crepuscule', name:'Crépuscule', lvl:16, css:'linear-gradient(135deg,#F0592B,#C0298C 55%,#FFB347)' },
+  { id:'ardoise',    name:'Ardoise',    lvl:24, css:'linear-gradient(135deg,#3A4152,#5A6478 55%,#8B94A8)' }
 ];
+/* Chaque dos n'est qu'un motif en dégradés répétés, servi par --bkimg. Aucun
+   fichier image, et le motif est peint une fois dans le calque de la carte. */
+const L1 = 'rgba(255,255,255,';
+const BACKS = [
+  { id:'halo', name:'Halo', lvl:0, img:'none', dot:1 },
+  { id:'losanges', name:'Losanges', lvl:3, dot:0,
+    img:`repeating-linear-gradient(45deg,${L1}.15) 0 1px,${L1}0) 1px 14%),`
+       +`repeating-linear-gradient(-45deg,${L1}.15) 0 1px,${L1}0) 1px 14%)` },
+  { id:'ondes', name:'Ondes', lvl:7, dot:0,
+    img:`repeating-radial-gradient(circle at 50% 46%,${L1}.14) 0 1.5px,${L1}0) 1.5px 12%)` },
+  { id:'quadrillage', name:'Quadrillage', lvl:13, dot:0,
+    img:`repeating-linear-gradient(0deg,${L1}.13) 0 1px,${L1}0) 1px 12%),`
+       +`repeating-linear-gradient(90deg,${L1}.13) 0 1px,${L1}0) 1px 17%)` },
+  { id:'rosace', name:'Rosace', lvl:20, dot:1,
+    img:`conic-gradient(from 0deg at 50% 50%,${L1}.17) 0 6deg,${L1}0) 6deg 30deg)` },
+  { id:'or', name:'Feuille d’or', lvl:28, dot:1, cols:['#7A5A1E','#D9B45B','#F6E9B8'],
+    img:`repeating-linear-gradient(45deg,${L1}.18) 0 1px,${L1}0) 1px 9%)` }
+];
+const COSMETICS = { theme:THEMES, back:BACKS };
 
 const board = document.getElementById('board');
 const el = id => document.getElementById(id);
@@ -577,12 +837,13 @@ const cards = [], nodes = [], pos = [], slots = {};
    par appel suffisent à faire tomber l'iPhone sous les 60 images/seconde. */
 const lastT = [], lastZ = [], lastDown = [];
 
-let S, history = [], dealt = new Set();
+let S = null, history = [], dealt = new Set();
 let timer = null, seconds = 0, running = false, won = false;
 let isDaily = false, dayKey = null, G = {};
-let prefs = { draw:1, lefty:0, haptic:1, theme:'aurore', tall:1 };
+let prefs = { draw:1, lefty:0, haptic:1, theme:'aurore', back:'halo', tall:1 };
 let stats = { played:0, won:0, streak:0, bestStreak:0, bestTime:0, bestMoves:0, daily:{} };
-let booted = false, stuckTold = false, dealing = false, dealGen = 0;
+let prog = { xp:0, lastWinDay:null, granted:[] };
+let booted = false, stuckTold = false, dealing = false, dealGen = 0, tipPending = false;
 
 /* ================= utilitaires ================= */
 const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
@@ -614,7 +875,62 @@ function toast(msg, ms){
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms || 2400);
 }
-const label = (btn, text) => { btn.querySelector('span').textContent = text; };
+/* Le libellé d'un bouton du dock vit dans son <span>, celui d'un bouton de
+   menu dans son <b> : y écrire directement écraserait le sous-titre. */
+const labelNode = btn => btn.querySelector('b') || btn.querySelector('span');
+const label = (btn, text) => { labelNode(btn).textContent = text; };
+const num = n => n.toLocaleString('fr-FR');
+
+/* ================= niveaux et cosmétiques ================= */
+const myLevel = () => levelOf(prog.xp);
+/* Un cosmétique déjà en place le reste, même si le niveau requis a été ajouté
+   après coup : on ne retire jamais à quelqu'un ce qu'il utilisait déjà. */
+const unlocked = it => it.lvl <= myLevel() || prog.granted.indexOf(it.id) >= 0;
+function levelBand(){
+  const L = myLevel(), lo = xpFor(L), hi = xpFor(L + 1);
+  return { L, lo, hi, into: prog.xp - lo, span: hi - lo,
+           pct: Math.max(0, Math.min(100, (prog.xp - lo) / (hi - lo) * 100)) };
+}
+/* Prochaine récompense, toutes pistes confondues. */
+function nextReward(){
+  const L = myLevel();
+  let best = null;
+  for (const kind of ['theme','back'])
+    for (const it of COSMETICS[kind])
+      if (it.lvl > L && (!best || it.lvl < best.it.lvl)) best = { kind, it };
+  return best;
+}
+function backStyle(b){
+  const cols = b.cols;
+  return `background-image:${b.img === 'none' ? 'none' : b.img},`
+       + `linear-gradient(150deg,${cols ? cols[0] : 'var(--back1)'} 0%,`
+       + `${cols ? cols[1] : 'var(--back2)'} 52%,${cols ? cols[2] : 'var(--back3)'} 100%)`;
+}
+function setBar(barId, pct, snap){
+  const bar = el(barId).parentElement;
+  if (snap){
+    bar.classList.add('snap'); el(barId).style.width = pct + '%';
+    void bar.offsetWidth; bar.classList.remove('snap');
+  } else {
+    el(barId).style.width = pct + '%';
+  }
+}
+/* Rafraîchit les deux affichages de progression : la pastille du bandeau et la
+   carte du menu. */
+function renderXp(snap){
+  const b = levelBand();
+  el('hud-lvl').textContent = b.L;
+  el('m-lvl').textContent = b.L;
+  el('m-lvltxt').textContent = 'Niveau ' + b.L;
+  el('m-xptxt').textContent = `${num(b.into)} / ${num(b.span)} XP`;
+  setBar('hud-fill', b.pct, snap);
+  setBar('m-fill', b.pct, snap);
+  const nx = nextReward();
+  el('m-next').innerHTML = nx
+    ? `<svg viewBox="0 0 24 24"><use href="#ic-spark"/></svg>`
+      + `${nx.kind === 'theme' ? 'Thème' : 'Dos'} ${nx.it.name} au niveau ${nx.it.lvl}`
+    : `<svg viewBox="0 0 24 24"><use href="#ic-spark"/></svg>Tous les cosmétiques sont débloqués.`;
+}
 
 /* ================= construction ================= */
 function buildCards(){
@@ -664,9 +980,12 @@ function buildSlots(){
 }
 
 /* ================= état ================= */
+/* Le mode de tirage est figé dans la partie : changer le réglage en cours de
+   route ne modifie plus la donne entamée, et l'XP se calcule sur le mode
+   réellement joué. */
 const blank = () => ({
   stock:[], waste:[], found:[[],[],[],[]], tab:[[],[],[],[],[],[],[]],
-  up:new Array(52).fill(false), moves:0
+  up:new Array(52).fill(false), moves:0, draw:prefs.draw
 });
 const pileOf = loc => loc.pile === 'tab' ? S.tab[loc.k]
                     : loc.pile === 'found' ? S.found[loc.k] : S[loc.pile];
@@ -789,6 +1108,7 @@ function layout(){
   slots.stock.classList.toggle('empty', S.stock.length === 0);
 }
 function relayout(){
+  if (!S){ geometry(); return; }
   board.classList.add('noanim');
   geometry(); layout();
   void board.offsetHeight;
@@ -797,7 +1117,7 @@ function relayout(){
 
 /* ================= sauvegarde ================= */
 let saveT = null;
-const snapState = () => ({ S, seconds, draw: prefs.draw, isDaily, dayKey });
+const snapState = () => ({ S, seconds, draw: S.draw, isDaily, dayKey });
 function saveSoon(){
   clearTimeout(saveT);
   saveT = setTimeout(() => { if (S && !won) Store.set(K.state, snapState()); }, 450);
@@ -838,7 +1158,7 @@ function draw(){
   if (!S.stock.length){
     while (S.waste.length){ const id = S.waste.pop(); S.up[id] = false; S.stock.push(id); }
   } else {
-    for (let n = 0; n < prefs.draw && S.stock.length; n++){
+    for (let n = 0; n < S.draw && S.stock.length; n++){
       const id = S.stock.pop(); S.up[id] = true; S.waste.push(id);
     }
   }
@@ -1078,6 +1398,7 @@ function checkWin(){
   if (!stats.bestMoves || S.moves < stats.bestMoves) stats.bestMoves = S.moves;
   if (isDaily) stats.daily[dayKey] = { won:true, time:seconds, moves:S.moves };
   saveStats(); Store.del(K.state);
+  const gain = awardXp();
   haptic('win'); update();
   if (!REDUCED) celebrate();
   el('won-title').textContent = isDaily ? 'Défi du jour résolu' : 'Gagné';
@@ -1087,7 +1408,77 @@ function checkWin(){
   el('won-grid').innerHTML =
     `<div class="cell"><b>${fmt(seconds)}</b><i>Temps</i></div>` +
     `<div class="cell"><b>${S.moves}</b><i>Coups</i></div>`;
-  setTimeout(() => openSheet('won', true), REDUCED ? 200 : 1100);
+  renderGain(gain);
+  setTimeout(() => { openSheet('won', true); playGain(gain); }, REDUCED ? 200 : 1100);
+}
+
+/* Calcule et crédite l'expérience de la partie gagnée. Renvoie le détail, qui
+   sert ensuite à animer la feuille de victoire. */
+function awardXp(){
+  const lines = [];
+  lines.push([isDaily ? 'Défi du jour' : 'Victoire', isDaily ? XP.daily : XP.win]);
+  if (seconds < 180) lines.push(['Sous trois minutes', XP.fast]);
+  else if (seconds < 300) lines.push(['Sous cinq minutes', XP.quick]);
+  const st = Math.min(XP.streakMax, (stats.streak - 1) * XP.streakStep);
+  if (st > 0) lines.push([`Série de ${stats.streak}`, st]);
+  const today = todayKey();
+  if (prog.lastWinDay !== today) lines.push(['Première victoire du jour', XP.firstToday]);
+  const mult = drawMult(S.draw);
+  const total = Math.round(lines.reduce((a, l) => a + l[1], 0) * mult);
+
+  const before = levelBand();
+  prog.lastWinDay = today;
+  prog.xp += total;
+  const after = levelBand();
+  /* Les cosmétiques franchis entre les deux niveaux sont acquis. */
+  const wonItems = [];
+  if (after.L > before.L){
+    for (const kind of ['theme','back'])
+      for (const it of COSMETICS[kind])
+        if (it.lvl > before.L && it.lvl <= after.L) wonItems.push({ kind, it });
+  }
+  Store.set(K.prog, prog);
+  return { total, lines, mult, before, after, wonItems, levelUp: after.L > before.L };
+}
+
+function renderGain(g){
+  el('won-gain').textContent = '+' + num(g.total) + ' XP';
+  el('won-lvl').textContent = g.before.L;
+  el('won-lvltxt').textContent = 'Niveau ' + g.before.L;
+  el('won-xptxt').textContent = `${num(g.before.into)} / ${num(g.before.span)} XP`;
+  el('won-xplist').innerHTML = g.lines.map(([n, v]) =>
+    `<li><span>${n}</span><b>+${num(v)}</b></li>`).join('')
+    + (g.mult < 1
+        ? `<li class="mult"><span>Tirage à une carte</span><b>×0,35</b></li>`
+        : '');
+  setBar('won-fill', g.before.pct, true);
+  const u = el('won-unlock');
+  if (!g.wonItems.length){ u.hidden = true; u.innerHTML = ''; return; }
+  u.hidden = false;
+  u.innerHTML = g.wonItems.map(({ kind, it }) => {
+    const sw = kind === 'theme' ? `background:${it.css}` : backStyle(it);
+    return `<div class="sw2" style="${sw}"></div>`
+         + `<div><b>${it.name} débloqué</b>`
+         + `<small>${kind === 'theme' ? 'Nouveau thème de table' : 'Nouveau dos de carte'}</small></div>`;
+  }).join('');
+}
+/* L'animation de la jauge : elle se remplit, et si un niveau tombe elle va au
+   bout, repart de zéro, puis se cale sur le nouveau palier. */
+function playGain(g){
+  const step2 = () => {
+    el('won-lvl').textContent = g.after.L;
+    el('won-lvltxt').textContent = 'Niveau ' + g.after.L;
+    el('won-xptxt').textContent = `${num(g.after.into)} / ${num(g.after.span)} XP`;
+    setBar('won-fill', 0, true);
+    requestAnimationFrame(() => setBar('won-fill', g.after.pct));
+    renderXp();
+    haptic('strong');
+  };
+  requestAnimationFrame(() => {
+    if (!g.levelUp){ setBar('won-fill', g.after.pct); renderXp(); return; }
+    setBar('won-fill', 100);
+    setTimeout(step2, REDUCED ? 0 : 700);
+  });
 }
 
 let flyers = [], raf = null, launcher = null;
@@ -1157,7 +1548,7 @@ function newGame(opts){
   /* Toute distribution en cours est périmée : ses minuteurs retomberaient sur
      la nouvelle donne et y retourneraient les mauvaises cartes. */
   const gen = ++dealGen;
-  stopCelebrate(); stopClock(); closeSheets();
+  stopCelebrate(); stopClock(); closeSheets(); hideMenu();
   seconds = 0; won = false; history = []; drag = null; stuckTold = false; litKey = null;
   isDaily = !!o.daily; dayKey = isDaily ? todayKey() : null;
   S = blank(); dealt = new Set();
@@ -1176,6 +1567,10 @@ function newGame(opts){
   for (; i < 52; i++){ S.stock.push(deck[i]); dealt.add(deck[i]); }
 
   geometry(); layout(); update(); Store.del(K.state);
+  if (tipPending){
+    tipPending = false; Store.set(K.seen, 1);
+    setTimeout(() => toast('Touchez une carte pour la placer au mieux, ou faites-la glisser.', 5600), 1400);
+  }
 
   if (REDUCED){
     order.forEach(id => dealt.add(id));
@@ -1192,33 +1587,37 @@ function newGame(opts){
     if (n === order.length - 1){ dealing = false; update(); }
   }, 30 + n * 34));
 }
-function requestNew(daily){
-  const btn = daily ? el('btn-daily') : el('btn-new');
+function requestNew(daily, btn){
+  const b = btn || (daily ? el('btn-daily') : el('btn-new'));
   const risky = S && !won && S.moves > 0 && !dealing;
   const go = () => {
     newGame({ daily });
     if (daily){
       const d = stats.daily[todayKey()];
       toast(d ? 'Défi du jour déjà résolu. Rejoué pour le plaisir.'
-              : 'Défi du jour : la même donne pour tout le monde.', 3000);
+              : `Défi du jour : la même donne pour tout le monde. ${num(XP.daily)} XP à la clé.`, 3400);
     }
   };
   if (!risky) return go();
-  arm(btn, daily ? 'Le défi remplace la partie en cours. Confirmez.'
-                 : 'La partie en cours compte comme perdue. Confirmez.', go);
+  arm(b, daily ? 'Le défi remplace la partie en cours. Confirmez.'
+               : 'La partie en cours compte comme perdue. Confirmez.', go);
 }
 /* Confirmation en deux temps : le libellé du bouton devient « Confirmer ».
    Pas de boîte de dialogue, mais aucune partie perdue par mégarde. */
+function disarmAll(){
+  document.querySelectorAll('.armed').forEach(b => {
+    clearTimeout(b._t); b._armed = false; b.classList.remove('armed');
+    if (b._orig != null) label(b, b._orig);
+  });
+}
 function arm(btn, msg, fn){
   if (btn._armed){
     clearTimeout(btn._t); btn._armed = false;
     btn.classList.remove('armed'); label(btn, btn._orig);
     fn(); return;
   }
-  document.querySelectorAll('.dk.armed').forEach(b => {
-    clearTimeout(b._t); b._armed = false; b.classList.remove('armed'); label(b, b._orig);
-  });
-  btn._armed = true; btn._orig = btn.querySelector('span').textContent;
+  disarmAll();
+  btn._armed = true; btn._orig = labelNode(btn).textContent;
   btn.classList.add('armed'); label(btn, 'Confirmer');
   toast(msg, 3200);
   btn._t = setTimeout(() => {
@@ -1229,6 +1628,7 @@ function restore(saved){
   dealGen++;
   stopCelebrate(); stopClock();
   S = saved.S; seconds = saved.seconds || 0;
+  if (!S.draw) S.draw = saved.draw || prefs.draw;
   isDaily = !!saved.isDaily; dayKey = saved.dayKey || null;
   won = false; history = []; drag = null; stuckTold = false; dealing = false;
   dealt = new Set([...Array(52).keys()]);
@@ -1242,6 +1642,7 @@ function restore(saved){
 let openKey = null;
 function openSheet(which, light){
   if (which === 'stats') renderStats();
+  if (which === 'cos') renderCos();
   closeSheets();
   const sc = el('scrim');
   sc.classList.toggle('light', !!light);
@@ -1253,6 +1654,40 @@ function closeSheets(){
   el('scrim').classList.remove('show');
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
   openKey = null;
+}
+
+/* ================= menu d'accueil ================= */
+let menuOpen = false;
+function openMenu(){
+  closeSheets();
+  stopClock();                       /* l'horloge ne tourne pas dans le menu */
+  renderXp(true); renderMenu();
+  el('menu').classList.add('show');
+  menuOpen = true;
+  if (S && !won) Store.set(K.state, snapState());
+}
+function hideMenu(){
+  el('menu').classList.remove('show');
+  menuOpen = false;
+  disarmAll();
+}
+function closeMenu(){
+  hideMenu();
+  if (S && !won && S.moves > 0) start();
+}
+function renderMenu(){
+  const live = !!S && !won;
+  el('m-resume').hidden = !live;
+  el('m-close').hidden = !live;
+  if (live) el('m-resume-sub').textContent = `${fmt(seconds)} · ${S.moves} coups`;
+  el('m-new-sub').textContent = live
+    ? 'Abandonne la partie en cours'
+    : `Tirage à ${prefs.draw === 1 ? 'une carte' : 'trois cartes'} · ${xpRateLabel(prefs.draw)}`;
+  const d = stats.daily[todayKey()];
+  el('m-daily').classList.toggle('done', !!d);
+  el('m-daily-sub').textContent = d
+    ? `Résolu en ${fmt(d.time)} · ${num(dailyXp())} XP la prochaine fois`
+    : `La même donne pour tout le monde · ${num(dailyXp())} XP`;
 }
 function renderStats(){
   const rate = stats.played ? Math.round(stats.won / stats.played * 100) : 0;
@@ -1271,7 +1706,16 @@ function renderStats(){
     : `<b>—</b><i>Défi du jour, pas encore résolu</i>`;
 }
 function applyPrefs(){
-  document.documentElement.dataset.theme = prefs.theme;
+  const root = document.documentElement;
+  root.dataset.theme = prefs.theme;
+  /* Le dos passe par des variables : un seul écrit habille les 52 cartes. */
+  const bk = BACKS.find(b => b.id === prefs.back) || BACKS[0];
+  root.style.setProperty('--bkimg', bk.img);
+  root.style.setProperty('--bkdot', bk.dot ? 'block' : 'none');
+  ['--back1','--back2','--back3'].forEach((v, i) => {
+    if (bk.cols) root.style.setProperty(v, bk.cols[i]);
+    else root.style.removeProperty(v);
+  });
   el('seg-draw').querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', +b.dataset.v === prefs.draw));
   el('seg-hand').querySelectorAll('button').forEach(b =>
@@ -1280,7 +1724,6 @@ function applyPrefs(){
   el('sw-haptic').setAttribute('aria-checked', prefs.haptic ? 'true' : 'false');
   el('sw-tall').classList.toggle('on', !!prefs.tall);
   el('sw-tall').setAttribute('aria-checked', prefs.tall ? 'true' : 'false');
-  el('themes').querySelectorAll('.th').forEach(b => b.classList.toggle('on', b.dataset.v === prefs.theme));
   /* La couleur de la barre système suit exactement la couleur des bords du
      fond : plus de bandeau d'une autre teinte en haut ni en bas de l'iPhone.
      On lit la variable, pas le fond calculé : celui-ci est en transition et
@@ -1288,16 +1731,46 @@ function applyPrefs(){
   const rgb = getComputedStyle(document.documentElement).getPropertyValue('--bg-rgb').trim();
   if (rgb) document.querySelector('meta[name="theme-color"]').setAttribute('content', 'rgb(' + rgb + ')');
 }
-function buildThemes(){
-  el('themes').innerHTML = THEMES.map(t =>
-    `<button class="th" data-v="${t.id}" title="${t.name}" aria-label="${t.name}"
-             style="background:${t.css}"></button>`).join('');
-  el('themes').addEventListener('click', e => {
-    const b = e.target.closest('.th'); if (!b) return;
-    prefs.theme = b.dataset.v; applyPrefs(); savePrefs(); haptic();
-    toast('Thème ' + THEMES.find(t => t.id === prefs.theme).name);
-  });
+/* ================= galerie de cosmétiques ================= */
+function renderCos(){
+  const L = myLevel();
+  const total = THEMES.length + BACKS.length;
+  const have = THEMES.filter(unlocked).length + BACKS.filter(unlocked).length;
+  el('cos-sub').textContent = `${have} sur ${total} débloqués. Niveau ${L}.`;
+  const cell = (kind, it) => {
+    const ok = unlocked(it);
+    const sw = kind === 'theme' ? `background:${it.css}` : backStyle(it);
+    return `<button class="cos${ok ? '' : ' locked'}${prefs[kind] === it.id ? ' on' : ''}"
+                    data-kind="${kind}" data-v="${it.id}" data-lvl="${it.lvl}"
+                    aria-label="${it.name}${ok ? '' : ', niveau ' + it.lvl + ' requis'}">
+              <span class="sw2" style="${sw}"></span>
+              <span class="lk"><svg viewBox="0 0 24 24"><use href="#ic-lock"/></svg>
+                <em>Niv. ${it.lvl}</em></span>
+              <span>${it.name}</span>
+            </button>`;
+  };
+  el('cos-themes').innerHTML = THEMES.map(t => cell('theme', t)).join('');
+  el('cos-backs').innerHTML = BACKS.map(b => cell('back', b)).join('');
 }
+function pickCos(e){
+  const b = e.target.closest('.cos'); if (!b) return;
+  const kind = b.dataset.kind, id = b.dataset.v;
+  const it = COSMETICS[kind].find(x => x.id === id);
+  if (!it) return;
+  if (!unlocked(it)){
+    haptic();
+    const need = xpFor(it.lvl) - prog.xp;
+    toast(`${it.name} se débloque au niveau ${it.lvl}. Encore ${num(Math.max(0, need))} XP.`, 3200);
+    return;
+  }
+  if (prefs[kind] === id) return;
+  prefs[kind] = id;
+  if (prog.granted.indexOf(id) < 0){ prog.granted.push(id); Store.set(K.prog, prog); }
+  applyPrefs(); savePrefs(); renderCos(); haptic('strong');
+  toast((kind === 'theme' ? 'Thème ' : 'Dos ') + it.name);
+}
+el('cos-themes').addEventListener('click', pickCos);
+el('cos-backs').addEventListener('click', pickCos);
 
 /* ================= branchements ================= */
 el('btn-new').onclick = () => requestNew(false);
@@ -1306,17 +1779,26 @@ el('btn-again').onclick = () => newGame({ daily:isDaily });
 el('btn-undo').onclick = undo;
 el('btn-hint').onclick = hint;
 el('btn-finish').onclick = finish;
-el('btn-stats').onclick = () => openSheet('stats');
-el('btn-set').onclick = () => openSheet('set');
-el('btn-won-stats').onclick = () => openSheet('stats');
+el('btn-menu').onclick = () => menuOpen ? closeMenu() : openMenu();
+el('btn-lvl').onclick = () => openSheet('cos');
+el('btn-won-menu').onclick = () => { closeSheets(); openMenu(); };
+el('m-resume').onclick = closeMenu;
+el('m-close').onclick = closeMenu;
+el('m-new').onclick = () => requestNew(false, el('m-new'));
+el('m-daily').onclick = () => requestNew(true, el('m-daily'));
+el('m-cos').onclick = () => openSheet('cos');
+el('m-stats').onclick = () => openSheet('stats');
+el('m-set').onclick = () => openSheet('set');
 el('scrim').onclick = closeSheets;
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheets);
 
 el('seg-draw').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const v = +b.dataset.v; if (v === prefs.draw) return;
-  prefs.draw = v; applyPrefs(); savePrefs();
-  toast(v === 1 ? 'Tirage à une carte, dès la prochaine donne' : 'Tirage à trois cartes, dès la prochaine donne', 3000);
+  prefs.draw = v; applyPrefs(); savePrefs(); renderMenu();
+  toast(v === 1
+    ? 'Tirage à une carte dès la prochaine donne. 35 % de l’XP.'
+    : 'Tirage à trois cartes dès la prochaine donne. XP complet.', 3400);
 });
 el('seg-hand').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1350,8 +1832,13 @@ el('btn-reset').onclick = () => {
 };
 
 addEventListener('keydown', e => {
-  if (e.key === 'Escape'){ closeSheets(); return; }
-  if (openKey) return;
+  if (e.key === 'Escape'){
+    if (openKey) closeSheets();
+    else if (menuOpen && S) closeMenu();
+    else if (!menuOpen) openMenu();
+    return;
+  }
+  if (openKey || menuOpen) return;
   const tag = e.target.tagName;
   if (tag === 'BUTTON' || e.target.classList.contains('sw')) return;
   if (e.key === 'z' || e.key === 'u') undo();
@@ -1366,7 +1853,7 @@ document.addEventListener('dblclick', e => e.preventDefault(), { passive:false }
    affiché reste celui réellement joué. */
 addEventListener('visibilitychange', () => {
   if (document.hidden){ stopClock(); if (S && !won) Store.set(K.state, snapState()); }
-  else if (S && !won && S.moves > 0) start();
+  else if (S && !won && !menuOpen && !openKey && S.moves > 0) start();
 });
 addEventListener('pagehide', () => { if (S && !won) Store.set(K.state, snapState()); });
 
@@ -1376,31 +1863,43 @@ let roT = null;
 new ResizeObserver(() => {
   if (!booted) return;
   clearTimeout(roT);
-  roT = setTimeout(() => { if (won) geometry(); else relayout(); }, 90);
+  roT = setTimeout(() => { if (!S || won) geometry(); else relayout(); }, 90);
 }).observe(board);
 
 /* ================= démarrage ================= */
 (async function boot(){
-  buildCards(); buildSlots(); buildThemes();
-  const [p, st, saved, seen] = await Promise.all([
-    Store.get(K.prefs), Store.get(K.stats), Store.get(K.state), Store.get(K.seen)
+  buildCards(); buildSlots();
+  const [p, st, saved, seen, pr] = await Promise.all([
+    Store.get(K.prefs), Store.get(K.stats), Store.get(K.state),
+    Store.get(K.seen), Store.get(K.prog)
   ]);
   if (p) prefs = Object.assign(prefs, p);
   if (st) stats = Object.assign(stats, st, { daily: st.daily || {} });
-  applyPrefs();
+  if (pr) prog = Object.assign(prog, pr, { granted: pr.granted || [] });
+  else if (stats.won > 0){
+    /* Première ouverture après l'ajout des niveaux : les victoires déjà
+       engrangées sont créditées, et le cosmétique en cours d'usage est acquis
+       même si son palier n'est pas encore atteint. */
+    prog.xp = stats.won * 120;
+    prog.granted = [prefs.theme, prefs.back];
+    Store.set(K.prog, prog);
+  }
+  if (!THEMES.some(t => t.id === prefs.theme && unlocked(t))) prefs.theme = 'aurore';
+  if (!BACKS.some(b => b.id === prefs.back && unlocked(b))) prefs.back = 'halo';
+  applyPrefs(); renderXp(true);
   el('storage-note').textContent = 'Sauvegarde active via le ' + Store.label + '.';
   booted = true;
+
   if (saved && saved.S && saved.S.found && !saved.S.found.every(f => f.length === 13)){
     if (saved.draw) prefs.draw = saved.draw;
-    applyPrefs(); restore(saved);
-    toast('Partie reprise');
+    applyPrefs(); restore(saved); stopClock();
   } else {
-    newGame();
-    if (!seen){
-      Store.set(K.seen, 1);
-      setTimeout(() => toast('Touchez une carte pour la placer au mieux, ou faites-la glisser.', 5200), 1500);
-    }
+    geometry();
   }
+  update();
+  /* On ouvre toujours sur le menu : c'est là que vit la progression. */
+  tipPending = !seen;
+  openMenu();
 })();
 
 })();
@@ -1408,7 +1907,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.1.0';
+window.APP_VERSION = '1.2.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
