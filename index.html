@@ -1389,7 +1389,10 @@ function relayout(){
 
 /* ================= sauvegarde ================= */
 let saveT = null;
-const snapState = () => ({ S, seconds, draw: S.draw, isDaily, dayKey });
+/* Accès unique au mode de tirage de la partie. Le repli couvre les états
+   enregistrés par une version antérieure, où le champ pouvait manquer. */
+const drawCount = () => (S && S.draw) || prefs.draw;
+const snapState = () => ({ S, seconds, draw: drawCount(), isDaily, dayKey });
 function saveSoon(){
   clearTimeout(saveT);
   saveT = setTimeout(() => { if (S && !won) Store.set(K.state, snapState()); }, 450);
@@ -1398,8 +1401,11 @@ const saveStats = () => Store.set(K.stats, stats);
 const savePrefs = () => Store.set(K.prefs, prefs);
 
 /* ================= coups ================= */
+/* draw doit figurer dans l'instantané : sans lui, une annulation rendait
+   S.draw indéfini, et la pioche cessait de distribuer. */
 const snapshot = () => JSON.stringify({
-  stock:S.stock, waste:S.waste, found:S.found, tab:S.tab, up:S.up, moves:S.moves
+  stock:S.stock, waste:S.waste, found:S.found, tab:S.tab, up:S.up,
+  moves:S.moves, draw:S.draw
 });
 function pushHistory(){ history.push(snapshot()); if (history.length > 200) history.shift(); }
 
@@ -1431,7 +1437,7 @@ function draw(){
   if (!S.stock.length){
     while (S.waste.length){ const id = S.waste.pop(); S.up[id] = false; S.stock.push(id); }
   } else {
-    for (let n = 0; n < S.draw && S.stock.length; n++){
+    for (let n = 0; n < drawCount() && S.stock.length; n++){
       const id = S.stock.pop(); S.up[id] = true; S.waste.push(id);
     }
   }
@@ -1662,7 +1668,7 @@ function scheduleLossCheck(){
     const w = solverWorker();
     if (!w) return;
     w.postMessage({ job:'pos', id:++posReq, pos:positionForSolver(),
-                    drawN:S.draw, budget:LOSS_BUDGET, maxDepth:200 });
+                    drawN:drawCount(), budget:LOSS_BUDGET, maxDepth:200 });
   }, 900);
 }
 function onLossVerdict(msg){
@@ -1729,7 +1735,7 @@ function awardXp(){
   if (st > 0) lines.push([`Série de ${stats.streak}`, st]);
   const today = todayKey();
   if (prog.lastWinDay !== today) lines.push(['Première victoire du jour', XP.firstToday]);
-  const mult = drawMult(S.draw);
+  const mult = drawMult(drawCount());
   const total = Math.round(lines.reduce((a, l) => a + l[1], 0) * mult);
 
   const before = levelBand();
@@ -1848,7 +1854,7 @@ const placedCards = () => S ? S.found.reduce((a, f) => a + f.length, 0) : 0;
 /* Une partie perdue rapporte quand même de l'expérience, au prorata des cartes
    placées : il reste 52 moins ce total à monter, et plus on s'en approche plus
    la consolation est grande. */
-const consolationXp = () => S ? Math.round(placedCards() * XP.perCard * drawMult(S.draw)) : 0;
+const consolationXp = () => S ? Math.round(placedCards() * XP.perCard * drawMult(drawCount())) : 0;
 
 function countAbandon(){
   if (!S || won || S.moves <= 0) return 0;
@@ -2350,7 +2356,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.5.0';
+window.APP_VERSION = '1.5.1';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
