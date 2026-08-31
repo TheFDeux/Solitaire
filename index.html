@@ -1787,7 +1787,12 @@ function playGain(g){
     haptic('strong');
   };
   requestAnimationFrame(() => {
-    if (!g.levelUp){ setBar('won-fill', g.after.pct); renderXp(); return; }
+    if (!g.levelUp){
+      /* Le libellé chiffré suit la jauge : sans cette ligne il restait sur le
+         total d'avant la victoire, à côté d'une barre déjà remplie. */
+      el('won-xptxt').textContent = `${num(g.after.into)} / ${num(g.after.span)} XP`;
+      setBar('won-fill', g.after.pct); renderXp(); return;
+    }
     setBar('won-fill', 100);
     setTimeout(step2, REDUCED ? 0 : 700);
   });
@@ -2330,7 +2335,10 @@ new ResizeObserver(() => {
   booted = true;
 
   if (saved && saved.S && saved.S.found && !saved.S.found.every(f => f.length === 13)){
-    if (saved.draw) prefs.draw = saved.draw;
+    /* Le mode de tirage de la partie reprise vit dans S.draw, et restore() sait
+       le retrouver dans les anciennes sauvegardes. L'écrire dans prefs renversait
+       le réglage du joueur à chaque réouverture, et le premier savePrefs() venu
+       le perdait pour de bon. */
     applyPrefs(); restore(saved); stopClock();
   } else {
     geometry();
@@ -2356,7 +2364,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.5.1';
+window.APP_VERSION = '1.5.2';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
