@@ -425,6 +425,7 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
 /* ---------- bloc d'expérience de la feuille de victoire ---------- */
 .xpwrap{padding:15px 16px 14px;border-radius:19px;margin:2px 0 4px;
         background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+.xpwrap[hidden]{display:none}
 .xphead{display:flex;align-items:center;gap:11px;margin-bottom:11px}
 .xphead .badge{width:36px;height:36px;font-size:16px}
 .xphead b{display:block;font-size:14px;font-weight:600;letter-spacing:-.02em}
@@ -669,7 +670,7 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
   <h3 id="won-title">Gagné</h3>
   <p class="sub" id="won-sub"></p>
   <div class="grid" id="won-grid"></div>
-  <div class="xpwrap">
+  <div class="xpwrap" id="won-xpwrap">
     <div class="xphead">
       <span class="badge" id="won-lvl">1</span>
       <div><b id="won-lvltxt">Niveau 1</b><i id="won-xptxt"></i></div>
@@ -693,6 +694,10 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
     <button class="mb primary" id="p-pause">
       <svg viewBox="0 0 24 24"><use href="#ic-pause"/></svg>
       <span><b>Mettre en pause</b><small>Le chrono s'arrête, vous reprendrez où vous en êtes</small></span>
+    </button>
+    <button class="mb" id="p-restart">
+      <svg viewBox="0 0 24 24"><use href="#ic-recycle"/></svg>
+      <span><b>Recommencer cette donne</b><small id="p-restart-sub"></small></span>
     </button>
     <button class="mb" id="p-forfeit">
       <svg viewBox="0 0 24 24"><use href="#ic-flag"/></svg>
@@ -1250,7 +1255,7 @@ function buildSlots(){
    réellement joué. */
 const blank = () => ({
   stock:[], waste:[], found:[[],[],[],[]], tab:[[],[],[],[],[],[],[]],
-  up:new Array(52).fill(false), moves:0, draw:prefs.draw
+  up:new Array(52).fill(false), moves:0, draw:prefs.draw, seed:null, replay:false
 });
 const pileOf = loc => loc.pile === 'tab' ? S.tab[loc.k]
                     : loc.pile === 'found' ? S.found[loc.k] : S[loc.pile];
@@ -1402,10 +1407,12 @@ const savePrefs = () => Store.set(K.prefs, prefs);
 
 /* ================= coups ================= */
 /* draw doit figurer dans l'instantané : sans lui, une annulation rendait
-   S.draw indéfini, et la pioche cessait de distribuer. */
+   S.draw indéfini, et la pioche cessait de distribuer. seed et replay voyagent
+   pour la même raison : sans eux, la première annulation rendait la donne
+   irrejouable et lui redonnait droit à l'XP. */
 const snapshot = () => JSON.stringify({
   stock:S.stock, waste:S.waste, found:S.found, tab:S.tab, up:S.up,
-  moves:S.moves, draw:S.draw
+  moves:S.moves, draw:S.draw, seed:S.seed, replay:S.replay
 });
 function pushHistory(){ history.push(snapshot()); if (history.length > 200) history.shift(); }
 
@@ -1703,25 +1710,39 @@ function finish(){
 function checkWin(){
   if (!S.found.every(f => f.length === 13)) return;
   won = true; stopClock();
-  const record = (!stats.bestTime || seconds < stats.bestTime);
-  stats.played++; stats.won++;
-  stats.streak++; stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
-  if (record) stats.bestTime = seconds;
-  if (!stats.bestMoves || S.moves < stats.bestMoves) stats.bestMoves = S.moves;
-  if (isDaily) stats.daily[dayKey] = { won:true, time:seconds, moves:S.moves };
-  saveStats(); Store.del(K.state);
-  const gain = awardXp();
+  /* Une donne rejouée se gagne pour le plaisir : le joueur connaît déjà la
+     disposition, la victoire ne prouve rien. Ni statistiques, ni XP, et la
+     carte de progression disparaît de la feuille plutôt que d'afficher un
+     gain nul. */
+  const training = !!S.replay;
+  let record = false, gain = null;
+  if (!training){
+    record = (!stats.bestTime || seconds < stats.bestTime);
+    stats.played++; stats.won++;
+    stats.streak++; stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
+    if (record) stats.bestTime = seconds;
+    if (!stats.bestMoves || S.moves < stats.bestMoves) stats.bestMoves = S.moves;
+    if (isDaily) stats.daily[dayKey] = { won:true, time:seconds, moves:S.moves };
+    saveStats();
+    gain = awardXp();
+  }
+  Store.del(K.state);
   haptic('win'); update();
   if (!REDUCED) celebrate();
   el('won-title').textContent = isDaily ? 'Défi du jour résolu' : 'Gagné';
-  el('won-sub').textContent = record && stats.played > 1
-    ? 'Nouveau meilleur temps.'
-    : `Série de ${stats.streak} ${stats.streak > 1 ? 'victoires' : 'victoire'}.`;
+  el('won-sub').textContent = training
+    ? 'Donne rejouée. Ni XP ni statistiques.'
+    : (record && stats.played > 1
+        ? 'Nouveau meilleur temps.'
+        : `Série de ${stats.streak} ${stats.streak > 1 ? 'victoires' : 'victoire'}.`);
+  el('won-xpwrap').hidden = training;
+  const d = dealId();
   el('won-grid').innerHTML =
     `<div class="cell"><b>${fmt(seconds)}</b><i>Temps</i></div>` +
-    `<div class="cell"><b>${S.moves}</b><i>Coups</i></div>`;
-  renderGain(gain);
-  setTimeout(() => { openSheet('won', true); playGain(gain); }, REDUCED ? 200 : 1100);
+    `<div class="cell"><b>${S.moves}</b><i>Coups</i></div>` +
+    (d ? `<div class="cell wide"><b>${d.value}</b><i>${d.label}</i></div>` : '');
+  if (gain) renderGain(gain);
+  setTimeout(() => { openSheet('won', true); if (gain) playGain(gain); }, REDUCED ? 200 : 1100);
 }
 
 /* Calcule et crédite l'expérience de la partie gagnée. Renvoie le détail, qui
@@ -1863,6 +1884,9 @@ const consolationXp = () => S ? Math.round(placedCards() * XP.perCard * drawMult
 
 function countAbandon(){
   if (!S || won || S.moves <= 0) return 0;
+  /* Une donne rejouée est un entraînement : la lâcher ne coûte ni partie ni
+     série, et ne rapporte pas non plus d'XP de consolation. */
+  if (S.replay) return 0;
   const placed = placedCards(), xp = consolationXp();
   stats.played++; stats.streak = 0; saveStats();
   if (xp <= 0) return 0;
@@ -1906,11 +1930,19 @@ function newGame(opts){
   nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly'); });
   lastT.length = 0; lastZ.length = 0;
 
-  let rand = Math.random;
+  /* Toute donne a désormais une graine, donc une identité : elle peut être
+     redistribuée à l'identique. Le défi du jour garde la sienne, dérivée de la
+     date, et ignore donc la graine qu'on lui passerait. Six chiffres pour une
+     partie ordinaire : un numéro se lit et se dicte, les trente-deux bits de
+     dailySeed non. */
+  S.replay = !!o.replay;
   if (isDaily){
     const n = parseInt(dayKey.replace(/-/g, ''), 10);
-    rand = rng(dailySeed(n, dailyOff > 0 ? dailyOff : 0));
+    S.seed = dailySeed(n, dailyOff > 0 ? dailyOff : 0);
+  } else {
+    S.seed = o.seed || (1 + Math.floor(Math.random() * 999999));
   }
+  const rand = rng(S.seed);
   const deck = shuffle([...Array(52).keys()], rand);
   let i = 0; const order = [];
   for (let row = 0; row < 7; row++)
@@ -1990,6 +2022,10 @@ function restore(saved){
   stopCelebrate(); stopClock();
   S = saved.S; seconds = saved.seconds || 0;
   if (!S.draw) S.draw = saved.draw || prefs.draw;
+  /* Sauvegardes d'avant 1.6.0 : aucune graine, donc aucune reprise possible
+     pour cette partie-là. Elle reste jouable telle quelle. */
+  if (typeof S.seed !== 'number') S.seed = null;
+  S.replay = !!S.replay;
   isDaily = !!saved.isDaily; dayKey = saved.dayKey || null;
   won = false; history = []; drag = null; stuckTold = false; dealing = false;
   lostTold = false; posReq++; clearTimeout(posT);
@@ -2099,13 +2135,31 @@ function closeMenu(){
 }
 /* Le bouton Menu du dock ne quitte jamais une partie en silence : il demande
    d'abord pause ou abandon. */
+/* Identité de la donne, pour l'afficher. Un défi du jour se nomme par sa date,
+   une partie ordinaire par son numéro. null quand la partie vient d'une
+   sauvegarde d'avant 1.6.0 : mieux vaut ne rien montrer qu'un numéro inventé. */
+const dealId = () => {
+  if (!S) return null;
+  if (isDaily && dayKey) return { value:`${dayKey.slice(8)}/${dayKey.slice(5, 7)}`, label:'Défi du jour' };
+  return typeof S.seed === 'number' ? { value:num(S.seed), label:'Donne' } : null;
+};
 function askLeave(){
   if (!S || won || dealing) return goHome();
   const placed = placedCards(), xp = consolationXp();
-  el('pause-sub').textContent = `${fmt(seconds)} · ${S.moves} coups · ${placed} carte${placed > 1 ? 's' : ''} sur 52 placée${placed > 1 ? 's' : ''}.`;
-  el('p-forfeit-sub').textContent = xp > 0
-    ? `Compte comme une défaite, mais rapporte ${num(xp)} XP`
-    : 'Compte comme une défaite';
+  const d = dealId();
+  el('pause-sub').textContent = `${fmt(seconds)} · ${S.moves} coups · ${placed} carte${placed > 1 ? 's' : ''} sur 52 placée${placed > 1 ? 's' : ''}${d ? ` · ${d.label} ${d.value}` : ''}.`;
+  /* Une donne déjà rejouée ne coûte rien : ne promettons ni défaite ni XP. */
+  el('p-forfeit-sub').textContent = S.replay
+    ? 'Sans effet sur vos statistiques'
+    : (xp > 0
+        ? `Compte comme une défaite, mais rapporte ${num(xp)} XP`
+        : 'Compte comme une défaite');
+  el('p-restart').hidden = (typeof S.seed !== 'number');
+  el('p-restart-sub').textContent = S.replay
+    ? 'Les mêmes cartes, sans effet sur vos statistiques'
+    : (xp > 0
+        ? `Les mêmes cartes. La tentative en cours compte comme une défaite, mais rapporte ${num(xp)} XP`
+        : 'Les mêmes cartes. La tentative en cours compte comme une défaite');
   openSheet('pause', true);
 }
 function renderMenu(){
@@ -2219,7 +2273,15 @@ el('cos-backs').addEventListener('click', pickCos);
 /* ================= branchements ================= */
 el('btn-new').onclick = () => requestNew(false);
 el('btn-daily').onclick = () => requestNew(true);
-el('btn-again').onclick = () => newGame({ daily:isDaily });
+/* Rejouer veut dire « les mêmes cartes », pour un défi du jour comme pour une
+   partie ordinaire — il voulait dire les deux à la fois. Une donne neuve reste
+   à une touche, sur le dock comme dans le menu. Sans graine (sauvegarde
+   d'avant 1.6.0), on retombe sur une donne neuve, et surtout pas sur un
+   entraînement. */
+el('btn-again').onclick = () => {
+  const seed = S && typeof S.seed === 'number' ? S.seed : null;
+  newGame(seed === null ? { daily:isDaily } : { seed, daily:isDaily, replay:true });
+};
 el('btn-undo').onclick = undo;
 el('btn-finish').onclick = finish;
 el('btn-menu').onclick = askLeave;
@@ -2228,6 +2290,16 @@ el('btn-won-menu').onclick = () => { closeSheets(); goHome(); };
 el('m-resume').onclick = closeMenu;
 el('m-close').onclick = closeMenu;
 el('p-pause').onclick = () => { closeSheets(); goHome(); };
+/* Recommencer solde la tentative en cours comme un abandon — newGame s'en
+   charge en appelant countAbandon — puis redistribue les mêmes cartes en
+   entraînement. On paie pour avoir renoncé à son essai réel, pas pour
+   réessayer. */
+el('p-restart').onclick = () => {
+  const seed = S && typeof S.seed === 'number' ? S.seed : null;
+  if (seed === null) return;
+  closeSheets();
+  newGame({ seed, daily:isDaily, replay:true });
+};
 el('p-forfeit').onclick = () => { closeSheets(); forfeit(); };
 el('m-new').onclick = () => requestNew(false, el('m-new'));
 el('m-daily').onclick = () => requestNew(true, el('m-daily'));
@@ -2364,7 +2436,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.5.2';
+window.APP_VERSION = '1.6.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
