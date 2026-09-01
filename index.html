@@ -1213,17 +1213,20 @@ function ticketPlan(ev, rand){
   const n = lo + Math.floor(rand() * (hi - lo + 1));
   const cols = [2, 3, 4, 5, 6];
   const out = [];
-  /* Le ticket profond d'abord : « sous quatre cartes » exige une colonne d'au
-     moins cinq, donc un indice supérieur ou égal à 4. */
+  /* Quatre cartes au-dessus d'un ticket, jamais plus. La septième colonne en
+     autorisait six, et déterrer six cartes pour un seul ticket rendait la partie
+     plus longue qu'amusante. Le ticket le plus profond se pose donc pile au
+     plafond : il reste l'objectif de la donne sans en faire une corvée. */
   const dk = pick(cols.filter(k => k >= 4));
-  out.push({ k:dk, i:Math.floor(rand() * (dk - 3)) });
+  out.push({ k:dk, i:dk - 4 });
   const sk = pick(cols.filter(k => k !== dk));
   out.push({ k:sk, i:sk - 1 - Math.floor(rand() * Math.min(2, sk)) });
   let rest = cols.filter(k => k !== dk && k !== sk);
   while (out.length < n && rest.length){
     const k = pick(rest);
     rest = rest.filter(x => x !== k);
-    out.push({ k, i:Math.floor(rand() * k) });
+    /* Entre une et quatre cartes au-dessus, selon ce que la colonne permet. */
+    out.push({ k, i:k - 1 - Math.floor(rand() * Math.min(4, k)) });
   }
   return out;
 }
@@ -2770,7 +2773,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.7.0';
+window.APP_VERSION = '1.7.1';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
