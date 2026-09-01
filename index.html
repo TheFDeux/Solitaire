@@ -230,6 +230,19 @@ body{
 /* Safari perd la backface dans certains contextes d'empilement : face et dos
    sont donc aussi echanges explicitement a mi-parcours du retournement. */
 .card.down .face{opacity:0}
+/* Un ticket : un carton clair, découpé en pointillés, marqué d'une étoile.
+   Comme les dos de cartes, ce n'est qu'un dégradé — aucun fichier image.
+
+   Il se distingue par sa FORME et son contraste, pas par sa teinte : les dos
+   sont au choix du joueur et trois des neuf sont dorés. Un ticket doré sur un
+   dos doré devenait introuvable, alors que le repérer d'un coup d'oeil est tout
+   l'intérêt du mode. */
+.card.ticket .back{background:linear-gradient(150deg,#FFF7E0 0%,#F6E3A6 55%,#FFFDF4 100%)}
+.card.ticket .back::after{content:'';position:absolute;inset:11% 9%;border-radius:7px;
+  border:2px dashed rgba(38,24,0,.62)}
+.card.ticket .back svg{position:absolute;inset:0;margin:auto;width:34%;height:34%;
+  fill:rgba(38,24,0,.72);stroke:none}
+.card[hidden]{display:none}
 .card:not(.down) .back{opacity:0}
 /* Les ombres sont exprimées en fraction de la carte, pas en pixels fixes. Un
    flou de 20 px valait 15 % de la largeur sur un écran d'ordinateur mais 42 %
@@ -648,6 +661,14 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
       <svg viewBox="0 0 24 24"><use href="#ic-cal"/></svg>
       <span><b>Défi du jour</b><small id="m-daily-sub"></small></span>
     </button>
+    <button class="mb" id="m-event" hidden>
+      <svg viewBox="0 0 24 24"><use href="#ic-spark"/></svg>
+      <span><b>Événement</b><small id="m-event-sub"></small></span>
+    </button>
+    <button class="mb" id="m-pass" hidden>
+      <svg viewBox="0 0 24 24"><use href="#ic-check"/></svg>
+      <span><b>Passe</b><small id="m-pass-sub"></small></span>
+    </button>
 
     <div class="mrow">
       <button class="mb" id="m-cos">
@@ -718,6 +739,14 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
     <h4>Dos de carte</h4>
     <div class="cos-grid" id="cos-backs"></div>
   </div>
+</section>
+
+<section class="sheet" id="sheet-pass" role="dialog" aria-modal="true" aria-label="Passe de l'événement">
+  <button class="btn ico close" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><use href="#ic-x"/></svg></button>
+  <h3 id="pass-title">Passe</h3>
+  <p class="sub" id="pass-sub"></p>
+  <div class="xpbar big"><i id="pass-fill"></i></div>
+  <ul class="xplist" id="pass-list"></ul>
 </section>
 
 <section class="sheet" id="sheet-stats" role="dialog" aria-modal="true" aria-label="Statistiques">
@@ -1036,7 +1065,8 @@ const Store = (() => {
   };
 })();
 const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1',
-            seen:'sol.seen.v1', prog:'sol.prog.v1', daily:'sol.daily.v1' };
+            seen:'sol.seen.v1', prog:'sol.prog.v1', daily:'sol.daily.v1',
+            event:'sol.event.v1' };
 /* Graine du défi du jour. Doit rester identique à celle du worker, sinon la
    donne vérifiée ne serait pas celle qui est jouée. */
 const dailySeed = (n, off) => (Math.imul(n, 2654435761) ^ Math.imul(off + 1, 40503)) >>> 0;
@@ -1074,7 +1104,14 @@ const THEMES = [
   { id:'minuit',     name:'Minuit',     lvl:5,  css:'linear-gradient(135deg,#1E3A8A,#0E7490 55%,#4C1D95)' },
   { id:'menthe',     name:'Menthe',     lvl:10, css:'linear-gradient(135deg,#0FA36B,#12B5C9 55%,#7BD389)' },
   { id:'crepuscule', name:'Crépuscule', lvl:16, css:'linear-gradient(135deg,#F0592B,#C0298C 55%,#FFB347)' },
-  { id:'ardoise',    name:'Ardoise',    lvl:24, css:'linear-gradient(135deg,#3A4152,#5A6478 55%,#8B94A8)' }
+  { id:'ardoise',    name:'Ardoise',    lvl:24, css:'linear-gradient(135deg,#3A4152,#5A6478 55%,#8B94A8)' },
+  /* Cosmétiques d'événement. Le palier 999 est hors d'atteinte par le niveau :
+     la seule porte d'entrée est prog.granted, où la passe les pousse. unlocked()
+     n'a donc pas à changer, et ce qui a été gagné reste acquis après la
+     fermeture de l'événement. */
+  { id:'guichet',  name:'Guichet',  lvl:999, evt:true, css:'linear-gradient(135deg,#7A5A1E,#C9922B 55%,#F0D98A)' },
+  { id:'kermesse', name:'Kermesse', lvl:999, evt:true, css:'linear-gradient(135deg,#B3245C,#E2643C 55%,#F5C24E)' },
+  { id:'lumieres', name:'Lumières', lvl:999, evt:true, css:'linear-gradient(135deg,#123A6B,#2A7DB8 55%,#F2E5A8)' }
 ];
 /* Chaque dos n'est qu'un motif en dégradés répétés, servi par --bkimg. Aucun
    fichier image, et le motif est peint une fois dans le calque de la carte. */
@@ -1092,7 +1129,15 @@ const BACKS = [
   { id:'rosace', name:'Rosace', lvl:20, dot:1,
     img:`conic-gradient(from 0deg at 50% 50%,${L1}.17) 0 6deg,${L1}0) 6deg 30deg)` },
   { id:'or', name:'Feuille d’or', lvl:28, dot:1, cols:['#7A5A1E','#D9B45B','#F6E9B8'],
-    img:`repeating-linear-gradient(45deg,${L1}.18) 0 1px,${L1}0) 1px 9%)` }
+    img:`repeating-linear-gradient(45deg,${L1}.18) 0 1px,${L1}0) 1px 9%)` },
+  /* Dos d'événement, même principe : palier hors d'atteinte, entrée par
+     prog.granted. Des motifs, pas des fichiers. */
+  { id:'perfore', name:'Perforé', lvl:999, evt:true, dot:0, cols:['#8A6A1E','#D9B45B','#F6E9B8'],
+    img:`repeating-radial-gradient(circle at 50% 50%,${L1}.22) 0 1.5px,${L1}0) 1.5px 9%)` },
+  { id:'souche', name:'Souche', lvl:999, evt:true, dot:0, cols:['#6B4A12','#C9922B','#F0D98A'],
+    img:`repeating-linear-gradient(90deg,${L1}.2) 0 1px,${L1}0) 1px 11%)` },
+  { id:'confetti', name:'Confetti', lvl:999, evt:true, dot:1, cols:['#8E1F52','#E2643C','#F5C24E'],
+    img:`repeating-conic-gradient(from 0deg at 30% 30%,${L1}.18) 0 8deg,${L1}0) 8deg 40deg)` }
 ];
 const COSMETICS = { theme:THEMES, back:BACKS };
 
@@ -1102,7 +1147,7 @@ const cards = [], nodes = [], pos = [], slots = {};
 /* Cache des transformations déjà écrites : layout() est appelé très souvent
    (chaque coup, chaque carte distribuée) et 52 écritures de style inutiles
    par appel suffisent à faire tomber l'iPhone sous les 60 images/seconde. */
-const lastT = [], lastZ = [], lastDown = [];
+const lastT = [], lastZ = [], lastDown = [], lastTicketOn = [];
 
 let S = null, history = [], dealt = new Set();
 let timer = null, seconds = 0, running = false, won = false;
@@ -1110,6 +1155,14 @@ let isDaily = false, dayKey = null, G = {};
 let prefs = { draw:1, lefty:0, haptic:1, theme:'aurore', back:'halo', tall:1 };
 let stats = { played:0, won:0, streak:0, bestStreak:0, bestTime:0, bestMoves:0, daily:{} };
 let prog = { xp:0, lastWinDay:null, granted:[] };
+/* La passe de l'événement : deux champs, pas trois. level est le nombre de
+   parties terminées, plafonné par l'événement. Aucune liste de paliers déjà
+   annoncés n'est nécessaire — level ne monte que d'une unité à la fois et un
+   palier est franchi à l'égalité exacte, donc le déblocage se déclenche une
+   seule fois. Un changement d'id remet la progression à zéro : une nouvelle
+   édition repart de son premier niveau, tandis que les cosmétiques acquis
+   vivent dans prog.granted et survivent à cette remise à zéro. */
+let evt = { id:null, level:0 };
 /* null tant que la donne du jour n'est pas vérifiée, -1 si la vérification a
    échoué ou n'est pas disponible, sinon le décalage de graine retenu. */
 let dailyOff = null, dailyPending = false, dailyWantsStart = false;
@@ -1121,6 +1174,59 @@ const todayKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
+
+/* ================= événements =================
+   Un événement est une donnée : une fenêtre de dates, un nombre de tickets par
+   donne, une passe et ses paliers. Le code lit ce qui est défini, donc une
+   deuxième édition sera un bloc de plus et non une réécriture.
+
+   La fenêtre s'appuie sur l'horloge de l'appareil, comme le défi du jour. Sans
+   serveur, « durée limitée » repose sur la bonne foi ; dans un jeu solitaire il
+   n'y a personne à qui voler quoi que ce soit. */
+const EVENTS = [{
+  id:'tickets-1',
+  name:'Semaine des tickets',
+  from:'2026-08-31', to:'2026-09-06',
+  tickets:[2, 4],
+  levels:30,
+  xpPerLevel:20,
+  rewards:{ 5:'perfore', 10:'guichet', 15:'souche', 20:'kermesse', 25:'confetti', 30:'lumieres' }
+}];
+/* Les bornes sont incluses et se comparent en texte : le format ISO le permet. */
+const activeEvent = () => {
+  const d = todayKey();
+  return EVENTS.find(e => e.from <= d && d <= e.to) || null;
+};
+const eventById = id => EVENTS.find(e => e.id === id) || null;
+/* Les tickets prolongent la table des cartes, à partir de l'identifiant 52. */
+const TICKET0 = 52, TICKETS_MAX = 4;
+const isTicket = id => id >= TICKET0;
+/* Répartition des tickets. Colonnes 3 à 7 seulement — la première n'a aucune
+   carte cachée et la deuxième une seule, un ticket à découvert dès la donne
+   n'étant pas un objectif. Une seule par colonne : deux tickets empilés se
+   découvriraient d'un seul creusement. Et deux profondeurs garanties, un ticket
+   sous une ou deux cartes pour que la première prise arrive vite, un sous
+   quatre ou plus pour qu'il reste du travail. */
+function ticketPlan(ev, rand){
+  const pick = a => a[Math.floor(rand() * a.length)];
+  const lo = ev.tickets[0], hi = ev.tickets[1];
+  const n = lo + Math.floor(rand() * (hi - lo + 1));
+  const cols = [2, 3, 4, 5, 6];
+  const out = [];
+  /* Le ticket profond d'abord : « sous quatre cartes » exige une colonne d'au
+     moins cinq, donc un indice supérieur ou égal à 4. */
+  const dk = pick(cols.filter(k => k >= 4));
+  out.push({ k:dk, i:Math.floor(rand() * (dk - 3)) });
+  const sk = pick(cols.filter(k => k !== dk));
+  out.push({ k:sk, i:sk - 1 - Math.floor(rand() * Math.min(2, sk)) });
+  let rest = cols.filter(k => k !== dk && k !== sk);
+  while (out.length < n && rest.length){
+    const k = pick(rest);
+    rest = rest.filter(x => x !== k);
+    out.push({ k, i:Math.floor(rand() * k) });
+  }
+  return out;
+}
 function rng(seed){
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a;
@@ -1231,6 +1337,25 @@ function buildCards(){
       frag.appendChild(n);
     }
   }
+  /* Les tickets prolongent la table. L'entrée sentinelle à rang et couleur
+     négatifs est ce qui dispense de toucher canFound et canTab : elles
+     répondent faux sur leur propre arithmétique. Sans elle, cards[52] serait
+     undefined et anyMoveAtAll planterait en lisant c.r sur le sommet d'une
+     colonne. */
+  for (let t = 0; t < TICKETS_MAX; t++){
+    const id = TICKET0 + t;
+    cards[id] = { id, s:-1, r:-1, ticket:true };
+    const n = document.createElement('div');
+    n.className = 'card down ticket';
+    n.dataset.i = id;
+    n.hidden = true;
+    n.innerHTML = `<div class="inner"><div class="face"></div>`
+      + `<div class="back"><svg viewBox="0 0 24 24"><use href="#ic-spark"/></svg></div></div>`;
+    nodes[id] = n;
+    lastDown[id] = true;
+    lastTicketOn[id] = false;
+    frag.appendChild(n);
+  }
   board.appendChild(frag);
 }
 function buildSlots(){
@@ -1255,7 +1380,8 @@ function buildSlots(){
    réellement joué. */
 const blank = () => ({
   stock:[], waste:[], found:[[],[],[],[]], tab:[[],[],[],[],[],[],[]],
-  up:new Array(52).fill(false), moves:0, draw:prefs.draw, seed:null, replay:false
+  up:new Array(56).fill(false), moves:0, draw:prefs.draw, seed:null, replay:false,
+  event:null
 });
 const pileOf = loc => loc.pile === 'tab' ? S.tab[loc.k]
                     : loc.pile === 'found' ? S.found[loc.k] : S[loc.pile];
@@ -1373,7 +1499,16 @@ function layout(){
     const ys = fanY(k);
     p.forEach((id, i) => put(id, G.x(k), G.tabY + ys[i], 300 + k * 20 + i));
   });
-  for (let id = 0; id < 52; id++){
+  /* Un ticket qui n'appartient à aucune colonne n'existe pas pour cette partie.
+     Sans ce retrait il resterait à sa dernière position, et la branche
+     « pas encore distribué » ci-dessous le garerait en évidence sur la pioche. */
+  const liveTickets = new Set();
+  for (let k = 0; k < 7; k++) for (const id of S.tab[k]) if (isTicket(id)) liveTickets.add(id);
+  for (let t = 0; t < TICKETS_MAX; t++){
+    const id = TICKET0 + t, on = liveTickets.has(id);
+    if (lastTicketOn[id] !== on){ nodes[id].hidden = !on; lastTicketOn[id] = on; }
+  }
+  for (let id = 0; id < 56; id++){
     if (!dealt.has(id)) put(id, G.sx.stock, 0, 900);
     const down = !S.up[id];
     if (lastDown[id] !== down){
@@ -1409,10 +1544,13 @@ const savePrefs = () => Store.set(K.prefs, prefs);
 /* draw doit figurer dans l'instantané : sans lui, une annulation rendait
    S.draw indéfini, et la pioche cessait de distribuer. seed et replay voyagent
    pour la même raison : sans eux, la première annulation rendait la donne
-   irrejouable et lui redonnait droit à l'XP. */
+   irrejouable et lui redonnait droit à l'XP. event pour la même raison encore :
+   sans lui, une annulation transformait une partie d'événement en partie
+   ordinaire, les tickets restant dans les colonnes sans que rien ne les
+   ramasse et la partie ne pouvant plus se terminer. */
 const snapshot = () => JSON.stringify({
   stock:S.stock, waste:S.waste, found:S.found, tab:S.tab, up:S.up,
-  moves:S.moves, draw:S.draw, seed:S.seed, replay:S.replay
+  moves:S.moves, draw:S.draw, seed:S.seed, replay:S.replay, event:S.event
 });
 function pushHistory(){ history.push(snapshot()); if (history.length > 200) history.shift(); }
 
@@ -1424,8 +1562,25 @@ function undo(){
   haptic(); layout(); update(); saveSoon();
 }
 function flipExposed(){
-  S.tab.forEach(p => { if (p.length && !S.up[p[p.length-1]]) S.up[p[p.length-1]] = true; });
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k];
+    /* Un ticket découvert est gagné dans l'instant : il quitte la colonne, et la
+       carte qu'il couvrait se retourne à son tour. La boucle couvre le cas où un
+       ticket en découvrirait un autre — les colonnes étant distinctes cela
+       n'arrive pas, et une comparaison suffit à supprimer la question. */
+    while (p.length && cards[p[p.length-1]].ticket) p.pop();
+    if (p.length && !S.up[p[p.length-1]]) S.up[p[p.length-1]] = true;
+  }
 }
+/* Les tickets ramassés ne sont pas comptés, ils se déduisent : ce sont ceux qui
+   ne figurent plus dans le tableau. Une annulation les y remet, donc elle défait
+   le ramassage sans une ligne de plus. */
+function ticketsLeft(){
+  let n = 0;
+  for (let k = 0; k < 7; k++) for (const id of S.tab[k]) if (isTicket(id)) n++;
+  return n;
+}
+const eventDone = () => !!S.event && ticketsLeft() === 0;
 function move(group, target){
   pushHistory();
   const src = pileOf(locate(group[0]));
@@ -1654,7 +1809,11 @@ function positionForSolver(){
      réindexer, sans quoi il analyserait une position qui n'existe pas. */
   const found = [0, 0, 0, 0];
   for (const f of S.found) if (f.length) found[cards[f[0]].s] = f.length;
-  return { tab:S.tab.map(a => a.slice()), down, found,
+  /* Le worker calcule RANK(id) = id % 13 + 1 et SUIT(id) = (id / 13) | 0 :
+     l'identifiant 52 lui donnerait un as de pique fantôme et il analyserait une
+     position qui n'existe pas — la même erreur que celle contre laquelle le
+     commentaire ci-dessus met en garde à propos des fondations. */
+  return { tab:S.tab.map(a => a.filter(id => !isTicket(id))), down, found,
            stock:S.stock.slice(), waste:S.waste.slice() };
 }
 const faceDownLeft = () => {
@@ -1665,6 +1824,9 @@ const faceDownLeft = () => {
 };
 function scheduleLossCheck(){
   if (lostTold || won || !S || dealing) return;
+  /* En mode événement l'objectif n'est pas les fondations : « cette partie ne
+     peut plus être gagnée » y serait faux. checkStuck, lui, reste vrai. */
+  if (S.event) return;
   /* Tant que la position reste largement ouverte, l'espace d'états est trop
      vaste pour être épuisé : la recherche ne pourrait rien démontrer et ne
      ferait que consommer de la batterie. */
@@ -1707,7 +1869,100 @@ function finish(){
   }
   tick();
 }
+/* Combien de tickets cette donne portait. Le tableau n'en contient plus à la fin
+   de la partie : on les recompte depuis la graine, qui les décrit. */
+function ticketCount(){
+  const ev = eventById(S.event);
+  if (!ev || typeof S.seed !== 'number') return 0;
+  return ticketPlan(ev, rng((S.seed ^ 0x9E3779B9) >>> 0)).length;
+}
+const saveEvt = () => Store.set(K.event, evt);
+/* Le niveau de la passe pour l'événement en cours. Une édition dont l'id ne
+   correspond plus repart de zéro. */
+function passLevel(){
+  const ev = activeEvent();
+  if (!ev) return 0;
+  return evt.id === ev.id ? evt.level : 0;
+}
+/* Crédite une partie terminée : un niveau, son XP, et le cosmétique du palier
+   quand il y en a un. Renvoie null quand rien n'a été crédité — hors événement,
+   pour un entraînement, ou passe déjà pleine. */
+function creditPass(){
+  const ev = activeEvent();
+  if (!ev || !S || S.event !== ev.id) return null;
+  /* Une donne rejouée est un entraînement : sa disposition est déjà connue, la
+     terminer ne prouve rien et ne fait donc pas monter la passe. */
+  if (S.replay) return null;
+  if (evt.id !== ev.id) evt = { id:ev.id, level:0 };
+  if (evt.level >= ev.levels) return null;
+  evt.level++;
+  saveEvt();
+  prog.xp += ev.xpPerLevel;
+  const id = ev.rewards[evt.level] || null;
+  let reward = null;
+  if (id && prog.granted.indexOf(id) < 0){
+    prog.granted.push(id);
+    for (const kind of ['theme','back']){
+      const it = COSMETICS[kind].find(x => x.id === id);
+      if (it) reward = { kind, it };
+    }
+  }
+  Store.set(K.prog, prog);
+  renderXp();
+  return { level:evt.level, xp:ev.xpPerLevel, reward, levels:ev.levels };
+}
+/* Fin d'une partie d'événement. La feuille de victoire est réemployée telle
+   quelle : rien ne justifie une seconde feuille. */
+function finishEvent(){
+  const n = ticketCount();
+  won = true; stopClock();
+  const gain = creditPass();
+  Store.del(K.state);
+  haptic('win'); update();
+  if (!REDUCED) celebrate();
+  el('won-title').textContent = 'Tickets récupérés';
+  /* creditPass renvoie null pour trois raisons différentes, et servir le message
+     de l'entraînement dans les trois cas mentirait à qui vient de remplir sa
+     passe ou de finir une donne après la fermeture de l'événement. */
+  const evNow = activeEvent();
+  el('won-sub').textContent = gain
+    ? `Passe : niveau ${gain.level} sur ${gain.levels}.`
+    : S.replay ? 'Donne rejouée. Ni passe ni XP.'
+    : (evNow && passLevel() >= evNow.levels) ? 'Passe terminée. Rien de plus à gagner.'
+    : 'Événement terminé.';
+  el('won-grid').innerHTML =
+    `<div class="cell"><b>${fmt(seconds)}</b><i>Temps</i></div>` +
+    `<div class="cell"><b>${S.moves}</b><i>Coups</i></div>` +
+    `<div class="cell wide"><b>${n}</b><i>Tickets récupérés</i></div>`;
+  /* La carte de progression n'a rien à montrer pour un entraînement. */
+  el('won-xpwrap').hidden = !gain;
+  if (gain){
+    const b = levelBand();
+    el('won-lvl').textContent = b.L;
+    el('won-lvltxt').textContent = 'Niveau ' + b.L;
+    el('won-xptxt').textContent = `${num(b.into)} / ${num(b.span)} XP`;
+    el('won-gain').textContent = '+' + num(gain.xp) + ' XP';
+    el('won-xplist').innerHTML = `<li><span>Niveau ${gain.level} de la passe</span><b>+${num(gain.xp)}</b></li>`;
+    setBar('won-fill', b.pct, true);
+    const u = el('won-unlock');
+    if (gain.reward){
+      const { kind, it } = gain.reward;
+      const sw = kind === 'theme' ? `background:${it.css}` : backStyle(it);
+      u.hidden = false;
+      u.innerHTML = `<div class="sw2" style="${sw}"></div>`
+        + `<div><b>${it.name} débloqué</b>`
+        + `<small>${kind === 'theme' ? 'Nouveau thème de table' : 'Nouveau dos de carte'}</small></div>`;
+      renderCos();
+    } else { u.hidden = true; u.innerHTML = ''; }
+  }
+  setTimeout(() => openSheet('won', true), REDUCED ? 200 : 1100);
+}
 function checkWin(){
+  /* Une partie d'événement se termine sur son dernier ticket, pas sur les
+     fondations. Il n'y a pas de conflit entre les deux fins : vider le tableau
+     vers les fondations suppose d'avoir découvert toutes les cartes cachées,
+     donc d'avoir ramassé tous les tickets bien avant. */
+  if (eventDone()) return finishEvent();
   if (!S.found.every(f => f.length === 13)) return;
   won = true; stopClock();
   /* Une donne rejouée se gagne pour le plaisir : le joueur connaît déjà la
@@ -1887,6 +2142,10 @@ function countAbandon(){
   /* Une donne rejouée est un entraînement : la lâcher ne coûte ni partie ni
      série, et ne rapporte pas non plus d'XP de consolation. */
   if (S.replay) return 0;
+  /* Une partie d'événement n'est pas une défaite au Klondike : l'abandonner ne
+     touche donc ni le palmarès ni l'XP. Un niveau de passe se gagne par partie
+     terminée, jamais au prorata. */
+  if (S.event) return 0;
   const placed = placedCards(), xp = consolationXp();
   stats.played++; stats.streak = 0; saveStats();
   if (xp <= 0) return 0;
@@ -1943,10 +2202,28 @@ function newGame(opts){
     S.seed = o.seed || (1 + Math.floor(Math.random() * 999999));
   }
   const rand = rng(S.seed);
+  /* Les tickets sortent d'un second flux tiré de la même graine, indépendant de
+     celui qui bat les cartes : la donne d'événement reste entièrement décrite
+     par son numéro, donc Recommencer et Rejouer fonctionnent dessus sans que
+     rien de plus soit enregistré. */
+  const ev = o.event ? activeEvent() : null;
+  S.event = ev ? ev.id : null;
+  const slots = ev ? ticketPlan(ev, rng((S.seed ^ 0x9E3779B9) >>> 0))
+                       .map((s, t) => ({ ...s, id:TICKET0 + t }))
+                   : [];
   const deck = shuffle([...Array(52).keys()], rand);
+  /* Un emplacement réservé à un ticket ne consomme pas de carte : celle qui
+     l'aurait occupé reste dans le paquet et finit dans la pioche. Les
+     cinquante-deux cartes sont donc toujours là, et la pioche en compte n de
+     plus. Les profondeurs étant toutes inférieures à k, la carte visible au
+     sommet d'une colonne n'est jamais un ticket. */
   let i = 0; const order = [];
   for (let row = 0; row < 7; row++)
-    for (let k = row; k < 7; k++){ const id = deck[i++]; S.tab[k].push(id); order.push(id); }
+    for (let k = row; k < 7; k++){
+      const t = slots.find(s => s.k === k && s.i === S.tab[k].length);
+      const id = t ? t.id : deck[i++];
+      S.tab[k].push(id); order.push(id);
+    }
   for (; i < 52; i++){ S.stock.push(deck[i]); dealt.add(deck[i]); }
 
   geometry(); layout(); update(); Store.del(K.state);
@@ -1970,7 +2247,7 @@ function newGame(opts){
     if (n === order.length - 1){ dealing = false; update(); }
   }, 30 + n * 34));
 }
-function requestNew(daily, btn){
+function requestNew(daily, btn, event){
   const b = btn || (daily ? el('btn-daily') : el('btn-new'));
   if (daily && dailyPending){
     /* On ne lance pas le défi avant de savoir quelle donne servir : sinon deux
@@ -1984,7 +2261,7 @@ function requestNew(daily, btn){
     /* Si la donne en cours est sacrifiée, countAbandon annonce l'XP de
        consolation : on ne recouvre pas ce message par celui du défi. */
     const abandoned = !!(S && !won && S.moves > 0);
-    newGame({ daily });
+    newGame({ daily, event });
     if (daily && !abandoned){
       const d = stats.daily[todayKey()];
       toast(d ? 'Défi du jour déjà résolu. Rejoué pour le plaisir.'
@@ -1992,8 +2269,9 @@ function requestNew(daily, btn){
     }
   };
   if (!risky) return go();
-  arm(b, daily ? 'Le défi remplace la partie en cours. Confirmez.'
-               : 'La partie en cours compte comme perdue. Confirmez.', go);
+  arm(b, event ? 'L’événement remplace la partie en cours. Confirmez.'
+               : daily ? 'Le défi remplace la partie en cours. Confirmez.'
+                       : 'La partie en cours compte comme perdue. Confirmez.', go);
 }
 /* Confirmation en deux temps : le libellé du bouton devient « Confirmer ».
    Pas de boîte de dialogue, mais aucune partie perdue par mégarde. */
@@ -2026,10 +2304,16 @@ function restore(saved){
      pour cette partie-là. Elle reste jouable telle quelle. */
   if (typeof S.seed !== 'number') S.seed = null;
   S.replay = !!S.replay;
+  /* Sauvegardes d'avant 1.7.0 : aucun événement, et un tableau up de 52 cases
+     qu'il faut rallonger sinon S.up[52] resterait indéfini. */
+  if (typeof S.event !== 'string') S.event = null;
+  while (S.up.length < 56) S.up.push(false);
   isDaily = !!saved.isDaily; dayKey = saved.dayKey || null;
   won = false; history = []; drag = null; stuckTold = false; dealing = false;
   lostTold = false; posReq++; clearTimeout(posT);
-  dealt = new Set([...Array(52).keys()]);
+  /* 56 et non 52 : un ticket absent de dealt serait garé sur la pioche par
+     layout, par-dessus la position que sa colonne vient de lui donner. */
+  dealt = new Set([...Array(56).keys()]);
   nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly'); });
   lastT.length = 0; lastZ.length = 0;
   geometry(); layout(); update();
@@ -2039,6 +2323,8 @@ function restore(saved){
 /* ================= feuilles ================= */
 let openKey = null;
 function openSheet(which, light){
+  /* La passe se recalcule à l'ouverture : son niveau a pu monter entre-temps. */
+  if (which === 'pass') renderPass();
   if (which === 'stats') renderStats();
   if (which === 'cos') renderCos();
   closeSheets();
@@ -2148,14 +2434,16 @@ function askLeave(){
   const placed = placedCards(), xp = consolationXp();
   const d = dealId();
   el('pause-sub').textContent = `${fmt(seconds)} · ${S.moves} coups · ${placed} carte${placed > 1 ? 's' : ''} sur 52 placée${placed > 1 ? 's' : ''}${d ? ` · ${d.label} ${d.value}` : ''}.`;
-  /* Une donne déjà rejouée ne coûte rien : ne promettons ni défaite ni XP. */
-  el('p-forfeit-sub').textContent = S.replay
+  /* Une donne déjà rejouée ne coûte rien, et une partie d'événement non plus :
+     countAbandon sort dans les deux cas. Ne promettons ni défaite ni XP. */
+  const free = S.replay || !!S.event;
+  el('p-forfeit-sub').textContent = free
     ? 'Sans effet sur vos statistiques'
     : (xp > 0
         ? `Compte comme une défaite, mais rapporte ${num(xp)} XP`
         : 'Compte comme une défaite');
   el('p-restart').hidden = (typeof S.seed !== 'number');
-  el('p-restart-sub').textContent = S.replay
+  el('p-restart-sub').textContent = free
     ? 'Les mêmes cartes, sans effet sur vos statistiques'
     : (xp > 0
         ? `Les mêmes cartes. La tentative en cours compte comme une défaite, mais rapporte ${num(xp)} XP`
@@ -2163,6 +2451,15 @@ function askLeave(){
   openSheet('pause', true);
 }
 function renderMenu(){
+  /* Les deux entrées de l'événement n'existent que pendant sa fenêtre. */
+  const ev = activeEvent();
+  el('m-event').hidden = !ev;
+  el('m-pass').hidden = !ev;
+  if (ev){
+    const L = passLevel();
+    el('m-event-sub').textContent = `${ev.name} · passe ${L} / ${ev.levels}`;
+    el('m-pass-sub').textContent = `Niveau ${L} sur ${ev.levels}`;
+  }
   const live = !!S && !won;
   el('m-resume').hidden = !live;
   el('m-close').hidden = !live;
@@ -2186,6 +2483,27 @@ function renderMenu(){
     : dailyOff >= 0
       ? `Donne gagnable, la même pour tout le monde · ${num(dailyXp())} XP`
       : `La même donne pour tout le monde · ${num(dailyXp())} XP`;
+}
+/* La passe : un état, six paliers. Six lignes et non trente — la barre porte la
+   progression fine, la liste ne sert qu'aux récompenses. */
+function renderPass(){
+  const ev = activeEvent();
+  if (!ev) return;
+  const L = passLevel();
+  el('pass-title').textContent = ev.name;
+  el('pass-sub').textContent = `Niveau ${L} sur ${ev.levels} · une partie terminée par niveau`;
+  setBar('pass-fill', Math.round(L / ev.levels * 100), true);
+  el('pass-list').innerHTML = Object.keys(ev.rewards)
+    .map(n => +n).sort((a, b) => a - b)
+    .map(n => {
+      const id = ev.rewards[n];
+      let name = id;
+      for (const kind of ['theme','back']){
+        const it = COSMETICS[kind].find(x => x.id === id);
+        if (it) name = it.name;
+      }
+      return `<li><span>Niveau ${n} — ${name}</span><b>${L >= n ? 'Obtenu' : '—'}</b></li>`;
+    }).join('');
 }
 function renderStats(){
   const rate = stats.played ? Math.round(stats.won / stats.played * 100) : 0;
@@ -2240,10 +2558,10 @@ function renderCos(){
     const sw = kind === 'theme' ? `background:${it.css}` : backStyle(it);
     return `<button class="cos${ok ? '' : ' locked'}${prefs[kind] === it.id ? ' on' : ''}"
                     data-kind="${kind}" data-v="${it.id}" data-lvl="${it.lvl}"
-                    aria-label="${it.name}${ok ? '' : ', niveau ' + it.lvl + ' requis'}">
+                    aria-label="${it.name}${ok ? '' : (it.evt ? ', à gagner pendant l’événement' : ', niveau ' + it.lvl + ' requis')}">
               <span class="sw2" style="${sw}"></span>
               <span class="lk"><svg viewBox="0 0 24 24"><use href="#ic-lock"/></svg>
-                <em>Niv. ${it.lvl}</em></span>
+                <em>${it.evt ? 'Événement' : 'Niv. ' + it.lvl}</em></span>
               <span>${it.name}</span>
             </button>`;
   };
@@ -2257,6 +2575,12 @@ function pickCos(e){
   if (!it) return;
   if (!unlocked(it)){
     haptic();
+    /* Un cosmétique d'événement n'a pas de palier à annoncer : son 999 ne veut
+       rien dire pour le joueur, il se gagne dans la passe. */
+    if (it.evt){
+      toast(`${it.name} se gagne dans la passe de l’événement.`, 3200);
+      return;
+    }
     const need = xpFor(it.lvl) - prog.xp;
     toast(`${it.name} se débloque au niveau ${it.lvl}. Encore ${num(Math.max(0, need))} XP.`, 3200);
     return;
@@ -2280,7 +2604,10 @@ el('btn-daily').onclick = () => requestNew(true);
    entraînement. */
 el('btn-again').onclick = () => {
   const seed = S && typeof S.seed === 'number' ? S.seed : null;
-  newGame(seed === null ? { daily:isDaily } : { seed, daily:isDaily, replay:true });
+  /* Comme pour Recommencer, le drapeau d'événement voyage avec la graine. */
+  const event = !!(S && S.event);
+  newGame(seed === null ? { daily:isDaily, event }
+                        : { seed, daily:isDaily, replay:true, event });
 };
 el('btn-undo').onclick = undo;
 el('btn-finish').onclick = finish;
@@ -2297,12 +2624,18 @@ el('p-pause').onclick = () => { closeSheets(); goHome(); };
 el('p-restart').onclick = () => {
   const seed = S && typeof S.seed === 'number' ? S.seed : null;
   if (seed === null) return;
+  /* Le drapeau d'événement se transmet avec la graine : sans lui, recommencer
+     une partie d'événement redonnait les mêmes cartes SANS les tickets, et la
+     partie n'avait plus de fin. */
+  const event = !!(S && S.event);
   closeSheets();
-  newGame({ seed, daily:isDaily, replay:true });
+  newGame({ seed, daily:isDaily, replay:true, event });
 };
 el('p-forfeit').onclick = () => { closeSheets(); forfeit(); };
 el('m-new').onclick = () => requestNew(false, el('m-new'));
 el('m-daily').onclick = () => requestNew(true, el('m-daily'));
+el('m-event').onclick = () => requestNew(false, el('m-event'), true);
+el('m-pass').onclick = () => openSheet('pass');
 el('m-cos').onclick = () => openSheet('cos');
 el('m-stats').onclick = () => openSheet('stats');
 el('m-set').onclick = () => openSheet('set');
@@ -2385,13 +2718,14 @@ new ResizeObserver(() => {
 /* ================= démarrage ================= */
 (async function boot(){
   buildCards(); buildSlots();
-  const [p, st, saved, seen, pr, dy] = await Promise.all([
+  const [p, st, saved, seen, pr, dy, ec] = await Promise.all([
     Store.get(K.prefs), Store.get(K.stats), Store.get(K.state),
-    Store.get(K.seen), Store.get(K.prog), Store.get(K.daily)
+    Store.get(K.seen), Store.get(K.prog), Store.get(K.daily), Store.get(K.event)
   ]);
   if (p) prefs = Object.assign(prefs, p);
   if (st) stats = Object.assign(stats, st, { daily: st.daily || {} });
   if (pr) prog = Object.assign(prog, pr, { granted: pr.granted || [] });
+  if (ec && typeof ec.level === 'number') evt = { id:ec.id || null, level:ec.level };
   else if (stats.won > 0){
     /* Première ouverture après l'ajout des niveaux : les victoires déjà
        engrangées sont créditées, et le cosmétique en cours d'usage est acquis
@@ -2436,7 +2770,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.6.0';
+window.APP_VERSION = '1.7.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
