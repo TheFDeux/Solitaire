@@ -1655,7 +1655,7 @@ function layout(){
   }
   for (let id = 0; id < 56; id++){
     if (!dealt.has(id)) put(id, G.sx.stock, 0, 900);
-    const down = !S.up[id];
+    const down = !S.up[id] || flipHold.has(id);
     if (lastDown[id] !== down){
       nodes[id].classList.toggle('down', down);
       nodes[id].classList.toggle('pickable', !down);
@@ -1715,8 +1715,19 @@ function flipExposed(){
        carte qu'il couvrait se retourne à son tour. La boucle couvre le cas où un
        ticket en découvrirait un autre — les colonnes étant distinctes cela
        n'arrive pas, et une comparaison suffit à supprimer la question. */
-    while (p.length && cards[p[p.length-1]].ticket) celebrateTicket(p.pop());
-    if (p.length && !S.up[p[p.length-1]]) S.up[p[p.length-1]] = true;
+    const taken = [];
+    while (p.length && cards[p[p.length-1]].ticket) taken.push(p.pop());
+    let flipped = -1;
+    if (p.length && !S.up[p[p.length-1]]){
+      flipped = p[p.length-1];
+      S.up[flipped] = true;
+    }
+    /* Retourner la carte dans la même image que le ticket qui s'envole donnait
+       deux gestes au même endroit, et on n'en voyait aucun. Elle attend donc la
+       fin de la prise — à l'affichage seulement, l'état étant déjà juste. */
+    if (taken.length && flipped >= 0) flipHold.add(flipped);
+    taken.forEach((tid, j) =>
+      celebrateTicket(tid, j === taken.length - 1 ? flipped : -1));
   }
 }
 /* Un ticket ramassé ne s'évapore pas : on le montre, il bondit, il part, et le
@@ -1730,6 +1741,12 @@ function flipExposed(){
    se poser, puis on le ramasse. */
 const TK_REST = 240, TK_FLY = 460;
 const winning = new Set();
+/* Cartes dont le retournement attend la fin de la prise du ticket. C'est un
+   retard d'AFFICHAGE seulement : S.up est juste dès l'instant du coup, sinon la
+   détection d'impasse, la victoire et le solveur raisonneraient sur un plateau
+   qui n'existe pas. */
+const flipHold = new Set();
+const releaseFlip = id => { if (id >= 0) flipHold.delete(id); };
 /* Le feu d'artifice de la prise. La position vient de pos[], le dernier endroit
    où put() a posé la carte : le ticket ayant quitté sa colonne, plus rien ne le
    déplace, donc la valeur reste juste. Les distances suivent la largeur de carte
@@ -1762,9 +1779,11 @@ function burstAt(id){
   board.appendChild(b);
   setTimeout(() => b.remove(), 900);
 }
-function celebrateTicket(id){
+function celebrateTicket(id, behind){
   haptic('strong');
-  if (REDUCED) return;
+  /* Sans animation il n'y a rien à attendre : la carte du dessous se retourne
+     aussitôt, faute de quoi elle resterait cachée pour de bon. */
+  if (REDUCED){ releaseFlip(behind); return; }
   winning.add(id);
   const n = nodes[id];
   setTimeout(() => {
@@ -1778,6 +1797,7 @@ function celebrateTicket(id){
   setTimeout(() => {
     winning.delete(id);
     n.classList.remove('won');
+    releaseFlip(behind);
     if (S) layout();
   }, TK_REST + TK_FLY);
 }
@@ -1871,7 +1891,9 @@ board.addEventListener('pointerdown', e => {
   const loc = locate(id);
   if (!loc) return;
   if (loc.pile === 'stock'){ draw(); return; }
-  if (!S.up[id]) return;
+  /* Une carte encore retenue paraît face cachée : la laisser prendre mettrait
+     une carte invisible dans la main. */
+  if (!S.up[id] || flipHold.has(id)) return;
   const pile = pileOf(loc);
   let group;
   if (loc.pile === 'tab'){ group = pile.slice(loc.i); if (!isSeq(group)) return; }
@@ -2718,6 +2740,9 @@ function newGame(opts){
   /* Les drapeaux à la main plutôt que cancelHint : son update() tomberait au
      milieu d'une remise à zéro, sur un état encore incomplet. */
   clearHint(); hintBusy = false; hintReq++; clearTimeout(hintWait); hintWait = null;
+  /* Une prise encore en vol appartient à la donne précédente : sans ce vidage,
+     son ticket resterait affiché et sa carte retenue sur le nouveau plateau. */
+  winning.clear(); flipHold.clear();
   isDaily = !!o.daily; dayKey = isDaily ? todayKey() : null;
   S = blank(); dealt = new Set();
   nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly'); });
@@ -2742,6 +2767,11 @@ function newGame(opts){
      rien de plus soit enregistré. */
   const ev = o.event ? activeEvent() : null;
   S.event = ev ? ev.id : null;
+  /* L'événement se joue à trois cartes, quel que soit le réglage. Chaque ticket
+     laisse sa carte dans la pioche : à une carte, le paquet devient une corvée
+     avant d'être un jeu. La préférence du joueur n'est pas touchée, seule cette
+     donne l'ignore — et le tirage à trois rapporte l'XP plein. */
+  if (S.event) S.draw = 3;
   const slots = ev ? ticketPlan(ev, rng((S.seed ^ 0x9E3779B9) >>> 0))
                        .map((s, t) => ({ ...s, id:TICKET0 + t }))
                    : [];
@@ -3004,7 +3034,9 @@ function renderMenu(){
   el('m-pass').hidden = !ev;
   if (ev){
     const L = passLevel();
-    el('m-event-sub').textContent = `${ev.name} · passe ${L} / ${ev.levels}`;
+    /* Le tirage est annoncé : le réglage dit peut-être « une carte », et une
+       donne qui en sort trois sans prévenir passerait pour un défaut. */
+    el('m-event-sub').textContent = `${ev.name} · passe ${L} / ${ev.levels} · trois cartes`;
     el('m-pass-sub').textContent = `Niveau ${L} sur ${ev.levels}`;
   }
   const live = !!S && !won;
@@ -3077,13 +3109,21 @@ function renderStats(){
 function applyPrefs(){
   const root = document.documentElement;
   root.dataset.theme = prefs.theme;
-  /* Le dos passe par des variables : un seul écrit habille les 52 cartes. */
+  /* Le dos passe par des variables : un seul écrit habille les 52 cartes.
+
+     Sur le PLATEAU, pas sur la racine. Les dos sans palette propre — Halo,
+     Losanges, Ondes, Quadrillage, Rosace — retombent sur var(--back1..3), et
+     les aperçus de la galerie lisent les mêmes variables. Écrites sur la
+     racine, la palette du dos choisi les repeignait tous : Perforé sélectionné,
+     l'aperçu de Halo passait à l'or de Perforé. Les cartes vivent toutes dans
+     #board, les aperçus non : le plateau reçoit la palette du dos, la galerie
+     garde celle du thème. */
   const bk = BACKS.find(b => b.id === prefs.back) || BACKS[0];
-  root.style.setProperty('--bkimg', bk.img);
-  root.style.setProperty('--bkdot', bk.dot ? 'block' : 'none');
+  board.style.setProperty('--bkimg', bk.img);
+  board.style.setProperty('--bkdot', bk.dot ? 'block' : 'none');
   ['--back1','--back2','--back3'].forEach((v, i) => {
-    if (bk.cols) root.style.setProperty(v, bk.cols[i]);
-    else root.style.removeProperty(v);
+    if (bk.cols) board.style.setProperty(v, bk.cols[i]);
+    else board.style.removeProperty(v);
   });
   el('seg-draw').querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', +b.dataset.v === prefs.draw));
@@ -3159,11 +3199,14 @@ el('btn-hint').onclick = askHint;
    d'avant 1.6.0), on retombe sur une donne neuve, et surtout pas sur un
    entraînement. */
 el('btn-again').onclick = () => {
+  /* Une donne d'événement terminée n'a plus rien à donner : ses tickets sont
+     ramassés, et la rejouer à l'identique reposerait un plateau sans objectif.
+     Rejouer en tire donc une NOUVELLE, qui compte. Recommencer, lui, garde la
+     donne : au milieu d'une manche c'est justement ce qu'on lui demande. */
+  if (S && S.event) return newGame({ event:true });
   const seed = S && typeof S.seed === 'number' ? S.seed : null;
-  /* Comme pour Recommencer, le drapeau d'événement voyage avec la graine. */
-  const event = !!(S && S.event);
-  newGame(seed === null ? { daily:isDaily, event }
-                        : { seed, daily:isDaily, replay:true, event });
+  newGame(seed === null ? { daily:isDaily }
+                        : { seed, daily:isDaily, replay:true });
 };
 el('btn-undo').onclick = undo;
 el('btn-finish').onclick = finish;
@@ -3326,7 +3369,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.8.0';
+window.APP_VERSION = '1.8.2';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
