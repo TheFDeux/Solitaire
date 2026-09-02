@@ -1,6 +1,6 @@
 /* Solitaire — service worker
    Bump CACHE_VERSION every time you publish an update. */
-const CACHE_VERSION = 'v1.7.1';
+const CACHE_VERSION = 'v1.7.2';
 const CACHE = 'solitaire-' + CACHE_VERSION;
 
 const SHELL = [
