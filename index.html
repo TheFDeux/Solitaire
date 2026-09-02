@@ -223,6 +223,26 @@ body{
 .slot.lit{background:rgba(255,255,255,.17);
           box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.65),
                      0 0 calc(var(--cw) * .2) rgba(150,200,255,.42)}
+/* Indice. L'anneau vit sur un pseudo-élément : .card porte déjà le translate3d
+   de layout() et .inner le rotateY du dos, animer leur transform casserait
+   l'un ou l'autre. Ne bougent donc que l'opacité et l'échelle d'un calque à
+   part, rien d'autre. */
+.card.hint::after,.card.hint-to::after{content:'';position:absolute;inset:-3px;
+  border-radius:calc(var(--radius) + 3px);
+  border:2px solid rgba(198,228,255,.95);
+  box-shadow:0 0 15px rgba(120,180,255,.75);
+  pointer-events:none}
+.card.hint::after{animation:hintRing 1.25s ease-in-out infinite}
+/* La destination reste immobile, et en pointillé : deux anneaux identiques ne
+   diraient pas lequel se prend et lequel se reçoit. */
+.card.hint-to::after{border-style:dashed;opacity:.85}
+.slot.hint{background:rgba(150,200,255,.2);
+           box-shadow:inset 0 0 0 1.8px rgba(198,228,255,.85),
+                      0 0 calc(var(--cw) * .22) rgba(120,180,255,.5)}
+@keyframes hintRing{
+  0%,100%{opacity:.5;transform:scale(1)}
+  50%{opacity:1;transform:scale(1.035)}
+}
 .slot.stock{cursor:pointer}
 .slot .recycle{position:absolute;inset:0;margin:auto;width:24%;height:24%;opacity:0;transition:opacity .2s}
 .slot.stock.empty .recycle{opacity:.5}
@@ -626,6 +646,8 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
 @media (prefers-reduced-motion:reduce){
   .card,.card .inner,.btn,.dk,.sheet,.scrim,.finish,.toast{transition-duration:.01ms!important}
   .face,.back{transition-delay:0s!important}
+  /* L'anneau reste, il ne pulse plus : l'indice doit rester lisible. */
+  .card.hint::after{animation:none;opacity:1}
 }
 </style>
 </head>
@@ -683,6 +705,10 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
   <symbol id="ic-spark" viewBox="0 0 24 24">
     <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/>
   </symbol>
+  <symbol id="ic-bulb" viewBox="0 0 24 24">
+    <path d="M12 2.6c-3.6 0-6.5 2.9-6.5 6.5 0 2.4 1.3 4.1 2.4 5.3.6.7 1 1.3 1.1 2h6c.1-.7.5-1.3 1.1-2 1.1-1.2 2.4-2.9 2.4-5.3 0-3.6-2.9-6.5-6.5-6.5z"/>
+    <path d="M9.2 18.1h5.6v1.6H9.2zm1 3h3.6v1.3h-3.6z"/>
+  </symbol>
 </svg>
 
 <header class="hud">
@@ -706,7 +732,7 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
   <button class="dk" id="btn-menu"><svg viewBox="0 0 24 24"><use href="#ic-menu"/></svg><span>Menu</span></button>
   <button class="dk" id="btn-undo"><svg viewBox="0 0 24 24"><use href="#ic-undo"/></svg><span>Annuler</span></button>
   <button class="dk accent" id="btn-new"><svg viewBox="0 0 24 24"><use href="#ic-deck"/></svg><span>Nouvelle</span></button>
-  <button class="dk" id="btn-daily"><svg viewBox="0 0 24 24"><use href="#ic-cal"/></svg><span>Défi</span></button>
+  <button class="dk" id="btn-hint"><svg viewBox="0 0 24 24"><use href="#ic-bulb"/></svg><span>Indice</span></button>
 </nav>
 
 <div class="menu" id="menu">
@@ -908,6 +934,37 @@ function buildDeal(seed){
   return { tab, stock, down:[0,1,2,3,4,5,6] };
 }
 
+/* Une carte monte aux fondations sans regret si les deux fondations de couleur
+   opposée ont atteint son rang moins un : plus aucune carte du tableau ne
+   pourra avoir besoin d'elle comme support. Hors de solvable pour que la
+   recherche d'indice s'en serve aussi. */
+function safeUp(id, found){
+  const r = RANK(id);
+  if (r <= 2) return true;
+  const s = SUIT(id);
+  const o1 = RED(s) ? 0 : 1, o2 = RED(s) ? 3 : 2;
+  return found[o1] >= r - 1 && found[o2] >= r - 1;
+}
+
+/* dfs monte les cartes sûres GRATUITEMENT avant même de chercher : ce coup-là
+   précède donc la ligne gagnante et n'y figure pas. Pour l'indice c'est
+   pourtant lui qu'il faut annoncer, sans quoi on désignerait le deuxième coup
+   en prétendant que c'est le premier. */
+function freeFoundation(pos){
+  const found = pos.found;
+  for (let k = 0; k < 7; k++){
+    const p = pos.tab[k];
+    if (p.length <= pos.down[k]) continue;
+    const id = p[p.length - 1];
+    if (found[SUIT(id)] === RANK(id) - 1 && safeUp(id, found)) return { m:'tf', k };
+  }
+  if (pos.waste.length){
+    const id = pos.waste[pos.waste.length - 1];
+    if (found[SUIT(id)] === RANK(id) - 1 && safeUp(id, found)) return { m:'wf' };
+  }
+  return null;
+}
+
 /* allowPull autorise le retour d'une carte d'une fondation vers le tableau, que
    le jeu permet. Il n'est activé que pour l'analyse d'une position en cours :
    la vérification de la donne du jour garde le jeu de coups d'origine, sur
@@ -916,20 +973,10 @@ function buildDeal(seed){
    faux et win faux, l'espace atteignable a été ÉPUISÉ : c'est une preuve
    d'impossibilité, et non un simple échec de recherche. */
 function solvable(deal, drawN, budget, allowPull, maxDepth){
-  let nodes = 0, cut = false;
+  let nodes = 0, cut = false, first = null;
   const depthCap = maxDepth || 200;
   const seen = new Set();
-
-  /* Une carte monte aux fondations sans regret si les deux fondations de
-     couleur opposée ont atteint son rang moins un : plus aucune carte du
-     tableau ne pourra avoir besoin d'elle comme support. */
-  function safe(id, found){
-    const r = RANK(id);
-    if (r <= 2) return true;
-    const s = SUIT(id);
-    const o1 = RED(s) ? 0 : 1, o2 = RED(s) ? 3 : 2;
-    return found[o1] >= r - 1 && found[o2] >= r - 1;
-  }
+  const safe = safeUp;
   /* Les sept colonnes sont interchangeables : on trie leurs signatures pour
      n'explorer qu'une fois deux dispositions équivalentes. */
   function key(tab, down, found, stock, waste){
@@ -1060,7 +1107,12 @@ function solvable(deal, drawN, budget, allowPull, maxDepth){
         if (!ns.length){ while (nw.length) ns.push(nw.pop()); }
         else { for (let n = 0; n < drawN && ns.length; n++) nw.push(ns.pop()); }
       }
-      if (dfs(nt, nd, nf, ns, nw, depth + 1)) return true;
+      if (dfs(nt, nd, nf, ns, nw, depth + 1)){
+        /* Le coup retenu à la racine est le premier de la ligne gagnante :
+           c'est tout ce dont l'indice a besoin. */
+        if (depth === 0) first = mv;
+        return true;
+      }
     }
     return false;
   }
@@ -1068,7 +1120,7 @@ function solvable(deal, drawN, budget, allowPull, maxDepth){
   const win = dfs(deal.tab.map(a => a.slice()), deal.down.slice(),
                   (deal.found || [0,0,0,0]).slice(),
                   deal.stock.slice(), (deal.waste || []).slice(), 0);
-  return { win, cut, nodes };
+  return { win, cut, nodes, first };
 }
 
 onmessage = e => {
@@ -1079,6 +1131,17 @@ onmessage = e => {
     const r = solvable(d.pos, d.drawN, d.budget, true, d.maxDepth);
     postMessage({ job:'pos', id:d.id,
                   verdict: r.win ? true : (r.cut ? null : false), nodes:r.nodes });
+    return;
+  }
+  if (d.job === 'hint'){
+    /* Un coup gratuit se donne sans chercher. Sinon on cherche une victoire et
+       on renvoie son premier coup. move null : la recherche n'a rien conclu
+       (cut) ou la position est prouvée perdue (dead), à l'appelant de décider. */
+    const free = freeFoundation(d.pos);
+    if (free){ postMessage({ job:'hint', id:d.id, move:free, dead:false }); return; }
+    const r = solvable(d.pos, d.drawN, d.budget, true, d.maxDepth);
+    postMessage({ job:'hint', id:d.id, move: r.win ? r.first : null,
+                  dead: !r.win && !r.cut, nodes:r.nodes });
     return;
   }
   /* Donne du jour : toujours vérifiée à trois cartes, le mode le plus
@@ -1642,6 +1705,7 @@ function undo(){
   S = JSON.parse(history.pop());
   stuckTold = false;
   posReq++; clearTimeout(posT);   /* une réponse en vol ne concerne plus la position */
+  cancelHint();
   haptic(); layout(); update(); saveSoon();
 }
 function flipExposed(){
@@ -1727,6 +1791,7 @@ function ticketsLeft(){
 }
 const eventDone = () => !!S.event && ticketsLeft() === 0;
 function move(group, target){
+  cancelHint();                    /* un indice joué n'a plus rien à montrer */
   pushHistory();
   const src = pileOf(locate(group[0]));
   src.splice(src.indexOf(group[0]), group.length);
@@ -1740,6 +1805,7 @@ function move(group, target){
 function draw(){
   if (won) return;
   if (!S.stock.length && !S.waste.length) return;
+  cancelHint();
   pushHistory();
   if (!S.stock.length){
     while (S.waste.length){ const id = S.waste.pop(); S.up[id] = false; S.stock.push(id); }
@@ -1960,23 +2026,45 @@ function checkStuck(){
    de budget, ne dit rien et reste silencieux.
    ================================================================ */
 let lostTold = false, posReq = 0, posT = null;
-function positionForSolver(){
-  const down = [];
+/* Les colonnes telles que le solveur les voit.
+
+   Le worker calcule RANK(id) = id % 13 + 1 et SUIT(id) = (id / 13) | 0 :
+   l'identifiant 52 lui donnerait un as de pique fantôme et il analyserait une
+   position qui n'existe pas. Les tickets sont donc retirés — ce qui est aussi
+   le bon modèle, puisqu'un ticket découvert disparaît au lieu de devenir une
+   carte jouable.
+
+   Le compte des cartes cachées se fait SUR LA COLONNE FILTRÉE. Le faire sur la
+   colonne réelle était faux : un ticket face cachée gonflait le compte d'un
+   cran, et le solveur croyait enterrée la première carte visible. Sans effet
+   jusqu'ici, l'analyse de position s'arrêtant avant l'événement, mais l'indice
+   y tourne.
+
+   map[k][j] rend l'index réel de la carte que le solveur voit en position j :
+   sans lui un coup traduit désignerait la mauvaise carte. */
+function solverCols(){
+  const cols = [], down = [], map = [];
   for (let k = 0; k < 7; k++){
+    const col = [], m = [];
+    for (let z = 0; z < S.tab[k].length; z++){
+      const id = S.tab[k][z];
+      if (isTicket(id)) continue;
+      col.push(id); m.push(z);
+    }
     let d = 0;
-    while (d < S.tab[k].length && !S.up[S.tab[k][d]]) d++;
-    down.push(d);
+    while (d < col.length && !S.up[col[d]]) d++;
+    cols.push(col); down.push(d); map.push(m);
   }
+  return { cols, down, map };
+}
+function positionForSolver(){
+  const { cols, down } = solverCols();
   /* Le solveur indexe les fondations PAR COULEUR, alors que S.found est un
      simple tableau de quatre piles sans couleur attitrée. Il faut donc les
      réindexer, sans quoi il analyserait une position qui n'existe pas. */
   const found = [0, 0, 0, 0];
   for (const f of S.found) if (f.length) found[cards[f[0]].s] = f.length;
-  /* Le worker calcule RANK(id) = id % 13 + 1 et SUIT(id) = (id / 13) | 0 :
-     l'identifiant 52 lui donnerait un as de pique fantôme et il analyserait une
-     position qui n'existe pas — la même erreur que celle contre laquelle le
-     commentaire ci-dessus met en garde à propos des fondations. */
-  return { tab:S.tab.map(a => a.filter(id => !isTicket(id))), down, found,
+  return { tab:cols, down, found,
            stock:S.stock.slice(), waste:S.waste.slice() };
 }
 const faceDownLeft = () => {
@@ -2010,6 +2098,284 @@ function onLossVerdict(msg){
   lostTold = true;
   toast('Cette partie ne peut plus être gagnée, quoi que vous jouiez. Annulez quelques coups, ou repartez sur une nouvelle donne.', 5600);
   haptic('strong');
+}
+
+/* ================================================================
+   INDICE
+
+   Le solveur répond déjà sur une position en cours — c'est lui qui annonce une
+   partie perdue. On lui pose donc la même question par le même mécanisme, mais
+   pour obtenir le premier coup d'une ligne gagnante au lieu d'un verdict.
+
+   Deux limites, deux garde-fous. Il ne conclut pas toujours dans son budget :
+   une heuristique prend alors le relais, car un bouton pressé doit répondre. Et
+   il ignore les tickets : aucun indice ne propose d'en enterrer un, ce que le
+   coup automatique refuse déjà de faire.
+   ================================================================ */
+/* Mesuré dans le worker, sur une position à dix-neuf cartes cachées : 25 000
+   nœuds coûtent 33 ms, 150 000 en coûtent 126, 400 000 en coûtent 369. Le
+   premier réglage était donc timide pour rien. À 200 000 on reste bien en
+   dessous de la demi-seconde ici, et sous la seconde et demie sur un téléphone
+   trois à cinq fois plus lent — le garde-fou de trois secondes couvre le reste. */
+const HINT_BUDGET = 200000;
+let hintReq = 0, hintMap = null, hintLit = [], hintT = null, hintWait = null;
+let hintBusy = false;
+/* Deux drapeaux, deux forces de signal. hintSpared : une colonne a été écartée
+   au passage, ce qui n'est parlant que si l'on ne trouve rien du tout.
+   hintBlocked : c'est le coup du SOLVEUR qui a été refusé, donc le meilleur
+   coup de la position — là il faut le dire, sans quoi l'indice se rabat sur un
+   va-et-vient stérile et le joueur ne comprend pas pourquoi il tourne en rond. */
+let hintSpared = false, hintBlocked = false;
+
+function clearHint(){
+  clearTimeout(hintT);
+  for (const [n, cls] of hintLit) n.classList.remove(cls);
+  hintLit = [];
+}
+/* Le plateau a changé : une recherche en cours ne vaut plus rien, et sa table
+   d'index encore moins. On la périme au lieu de laisser une réponse tardive
+   désigner une carte d'après l'ancienne position. */
+function cancelHint(){
+  clearHint();
+  if (!hintBusy) return;
+  hintBusy = false;
+  clearTimeout(hintWait);
+  hintWait = null;
+  hintReq++;
+  update();
+}
+function paintHint(list){
+  clearHint();
+  hintLit = list.filter(p => p && p[0]);
+  for (const [n, cls] of hintLit) n.classList.add(cls);
+  hintT = setTimeout(clearHint, 5200);
+}
+/* Où poser, vu par le joueur. L'emplacement seul ne suffit pas : dès que la
+   colonne d'arrivée porte une carte, elle recouvre l'emplacement et le halo
+   disparaît dessous — l'indice montrait alors quoi prendre sans jamais dire
+   où. On éclaire donc la carte du dessus quand il y en a une. */
+function hintTargetNode(slot){
+  if (slot === 'stock') return slots.stock;
+  const k = +slot.slice(1);
+  const pile = slot[0] === 'f' ? S.found[k] : S.tab[k];
+  return pile.length ? nodes[pile[pile.length - 1]] : slots[slot];
+}
+const foundFor = id => { for (let f = 0; f < 4; f++) if (canFound(f, id)) return f; return -1; };
+/* Le début de la suite prenable au sommet d'une colonne, -1 s'il n'y a rien à
+   prendre. Même règle que le glissé : toute sous-séquence descendante et
+   alternée est saisissable. */
+function topRun(k){
+  const p = S.tab[k];
+  let i = p.length - 1;
+  if (i < 0 || !S.up[p[i]]) return -1;
+  while (i > 0 && S.up[p[i-1]]){
+    const a = cards[p[i-1]], b = cards[p[i]];
+    if (b.r === a.r - 1 && COLOR[a.s] !== COLOR[b.s]) i--; else break;
+  }
+  return i;
+}
+/* Une colonne d'accueil pour un paquet de n cartes, -1 s'il n'y en a pas.
+   Refuse d'enterrer un ticket, et refuse de déplacer une colonne entière vers
+   une case vide : ce coup ne mène nulle part. */
+function tabDest(id, n, fromK){
+  for (let d = 0; d < 7; d++){
+    if (d === fromK) continue;
+    if (!canTab(d, id)) continue;
+    if (S.tab[d].length){ if (buriesTicket(d, n)){ hintSpared = true; continue; } }
+    else if (fromK >= 0 && n === S.tab[fromK].length) continue;
+    return d;
+  }
+  return -1;
+}
+
+/* Traduit un coup du solveur en cartes à éclairer. Renvoie null si la
+   traduction ne tient pas : mieux vaut l'heuristique qu'un indice qui désigne
+   la mauvaise carte. */
+function hintFromMove(mv){
+  if (!mv || !S) return null;
+  if (mv.m === 'tf'){
+    const p = S.tab[mv.k];
+    if (!p.length) return null;
+    const id = p[p.length-1];
+    const f = foundFor(id);
+    return f < 0 ? null : { cards:[id], slot:'f' + f };
+  }
+  if (mv.m === 'wf'){
+    if (!S.waste.length) return null;
+    const id = S.waste[S.waste.length-1];
+    const f = foundFor(id);
+    return f < 0 ? null : { cards:[id], slot:'f' + f };
+  }
+  if (mv.m === 'wt'){
+    if (!S.waste.length) return null;
+    const id = S.waste[S.waste.length-1];
+    if (!canTab(mv.to, id)) return null;
+    if (S.tab[mv.to].length && buriesTicket(mv.to, 1)) return null;
+    return { cards:[id], slot:'t' + mv.to };
+  }
+  if (mv.m === 'tt'){
+    const m = hintMap && hintMap[mv.k];
+    if (!m || mv.i < 0 || mv.i >= m.length) return null;
+    const group = S.tab[mv.k].slice(m[mv.i]);
+    if (!group.length || !isSeq(group)) return null;
+    if (!canTab(mv.to, group[0])) return null;
+    if (S.tab[mv.to].length && buriesTicket(mv.to, group.length)){
+      hintSpared = hintBlocked = true; return null; }
+    return { cards:group, slot:'t' + mv.to };
+  }
+  if (mv.m === 'ft'){
+    /* Le solveur numérote les fondations par couleur, le jeu ne leur en
+       attribue aucune : il faut retrouver la pile de cette couleur. */
+    const k = S.found.findIndex(p => p.length && cards[p[0]].s === mv.f);
+    if (k < 0) return null;
+    const id = S.found[k][S.found[k].length-1];
+    if (!canTab(mv.to, id)) return null;
+    if (S.tab[mv.to].length && buriesTicket(mv.to, 1)) return null;
+    return { cards:[id], slot:'t' + mv.to };
+  }
+  if (mv.m === 'dr') return { cards:[], slot:'stock' };
+  return null;
+}
+
+/* Le relais quand la recherche renonce : l'ordre qu'un joueur expérimenté suit.
+   D'abord ce qui découvre, ensuite ce qui range, la pioche en dernier. Seuls
+   les as et les deux montent d'office : envoyer une grosse carte aux fondations
+   sans avoir prouvé la victoire est le meilleur moyen de perdre la partie.
+
+   En événement, dégager un ticket passe avant tout : c'est l'objectif du mode,
+   les fondations ne le sont pas — le même raisonnement qui fait taire la
+   détection de défaite pendant un événement. */
+function hintFromGuess(){
+  if (!S) return null;
+
+  if (S.event){
+    for (let k = 0; k < 7; k++){
+      const p = S.tab[k];
+      const ti = p.findIndex(isTicket);
+      if (ti < 0 || ti === p.length - 1) continue;   /* pas de ticket, ou déjà à nu */
+      const id = p[p.length-1];
+      const f = foundFor(id);
+      if (f >= 0) return { cards:[id], slot:'f' + f };
+      const i0 = topRun(k);
+      if (i0 > ti){
+        const g = p.slice(i0);
+        const d = tabDest(g[0], g.length, k);
+        if (d >= 0) return { cards:g, slot:'t' + d };
+      }
+    }
+  }
+
+  /* Découvrir une carte cachée : le vrai progrès au solitaire. */
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k];
+    const i0 = topRun(k);
+    if (i0 <= 0 || S.up[p[i0-1]]) continue;
+    const g = p.slice(i0);
+    if (g.length === 1){
+      const f = foundFor(g[0]);
+      if (f >= 0) return { cards:g, slot:'f' + f };
+    }
+    const d = tabDest(g[0], g.length, k);
+    if (d >= 0) return { cards:g, slot:'t' + d };
+  }
+
+  /* As et deux : ils ne servent jamais de support, ils peuvent monter. */
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k];
+    if (!p.length) continue;
+    const id = p[p.length-1];
+    if (isTicket(id) || cards[id].r > 2) continue;
+    const f = foundFor(id);
+    if (f >= 0) return { cards:[id], slot:'f' + f };
+  }
+  if (S.waste.length){
+    const id = S.waste[S.waste.length-1];
+    if (cards[id].r <= 2){
+      const f = foundFor(id);
+      if (f >= 0) return { cards:[id], slot:'f' + f };
+    }
+    const d = tabDest(id, 1, -1);
+    if (d >= 0) return { cards:[id], slot:'t' + d };
+  }
+
+  /* TOUTE sous-séquence, pas seulement la suite complète : le jeu autorise à
+     saisir n'importe quel suffixe. N'essayer que le run entier faisait répondre
+     « repiochez » alors que trois coups existaient — l'erreur exacte contre
+     laquelle anyMoveAtAll met déjà en garde quelques lignes plus haut. */
+  for (let k = 0; k < 7; k++){
+    const i0 = topRun(k);
+    if (i0 < 0) continue;
+    const p = S.tab[k];
+    for (let i = i0; i < p.length; i++){
+      const g = p.slice(i);
+      const d = tabDest(g[0], g.length, k);
+      if (d >= 0) return { cards:g, slot:'t' + d };
+    }
+  }
+
+  /* Dernier recours avant la pioche : monter une carte, même haute. Sans preuve
+     de victoire ce n'est pas forcément le meilleur coup, mais renvoyer le joueur
+     à la pioche alors qu'un coup existe est pire que discutable. */
+  for (let k = 0; k < 7; k++){
+    const p = S.tab[k];
+    if (!p.length) continue;
+    const id = p[p.length-1];
+    if (isTicket(id)) continue;
+    const f = foundFor(id);
+    if (f >= 0) return { cards:[id], slot:'f' + f };
+  }
+
+  if (S.stock.length || S.waste.length) return { cards:[], slot:'stock' };
+  return null;
+}
+
+function showHint(h){
+  if (!h) return noHint();
+  /* La source pulse, la destination ne pulse pas : c'est le battement qui dit
+     « prenez ceci », et son absence « posez là ». */
+  const tgt = hintTargetNode(h.slot);
+  paintHint(h.cards.map(id => [nodes[id], 'hint'])
+                   .concat([[tgt, tgt.classList.contains('slot') ? 'hint' : 'hint-to']]));
+  haptic('light');
+  if (hintBlocked)
+    toast('Le meilleur coup d’ici enterrerait un ticket : voici le mieux sans y toucher. À vous de creuser si vous préférez la victoire au ticket.', 5200);
+  else if (h.slot === 'stock' && !h.cards.length)
+    toast(hintSpared
+      ? 'Le seul coup qui reste enterrerait un ticket. Repiochez, ou faites-le glisser si vous y tenez.'
+      : 'Rien à jouer sur le plateau : repiochez.', hintSpared ? 4200 : 2600);
+}
+function noHint(){
+  toast(hintSpared
+    ? 'Il ne reste qu’un coup, et il enterrerait un ticket. Faites-le glisser si vous y tenez.'
+    : 'Aucun coup utile ici. Repiochez, ou annulez un coup.', hintSpared ? 4200 : 3000);
+}
+function hintDone(h){
+  hintBusy = false;
+  clearTimeout(hintWait);
+  hintWait = null;
+  update();
+  showHint(h);
+}
+function askHint(){
+  if (!S || won || dealing || hintBusy) return;
+  cancelHint();
+  hintSpared = hintBlocked = false;
+  const w = solverWorker();
+  if (!w) return hintDone(hintFromGuess());
+  /* La table d'index est prise MAINTENANT : la réponse arrivera plus tard, et
+     elle ne vaudra que pour cette position. */
+  hintMap = solverCols().map;
+  hintBusy = true;
+  update();
+  w.postMessage({ job:'hint', id:++hintReq, pos:positionForSolver(),
+                  drawN:drawCount(), budget:HINT_BUDGET, maxDepth:120 });
+  /* Un bouton ne reste pas muet parce que la recherche traîne. */
+  hintWait = setTimeout(() => { if (hintBusy) hintDone(hintFromGuess()); }, 3000);
+}
+function onHintAnswer(msg){
+  if (msg.id !== hintReq || !hintBusy) return;   /* périmé, ou déjà répondu */
+  if (!S || won){ hintBusy = false; clearTimeout(hintWait); update(); return; }
+  hintDone(hintFromMove(msg.move) || hintFromGuess());
 }
 
 /* ================= fin et victoire ================= */
@@ -2287,10 +2653,11 @@ function update(){
   const complete = !S || S.found.every(f => f.length === 13);
   el('btn-finish').classList.toggle('show', !!S && !won && !complete && allUp());
   el('btn-undo').disabled = !history.length || won;
-  const done = stats.daily[todayKey()];
-  el('btn-daily').classList.toggle('done', !!done);
-  el('btn-daily').disabled = dailyPending;
-  label(el('btn-daily'), done ? 'Résolu' : 'Défi');
+  /* Le défi vit dans le menu, où son état est déjà tenu à jour : le dock a pris
+     l'indice à sa place. */
+  const hb = el('btn-hint');
+  hb.disabled = !S || won || dealing || hintBusy;
+  label(hb, hintBusy ? 'Cherche' : 'Indice');
 }
 
 /* ================= nouvelle partie ================= */
@@ -2348,6 +2715,9 @@ function newGame(opts){
   stopCelebrate(); stopClock(); closeSheets(); hideMenu();
   seconds = 0; won = false; history = []; drag = null; stuckTold = false; litKey = null;
   lostTold = false; posReq++; clearTimeout(posT);
+  /* Les drapeaux à la main plutôt que cancelHint : son update() tomberait au
+     milieu d'une remise à zéro, sur un état encore incomplet. */
+  clearHint(); hintBusy = false; hintReq++; clearTimeout(hintWait); hintWait = null;
   isDaily = !!o.daily; dayKey = isDaily ? todayKey() : null;
   S = blank(); dealt = new Set();
   nodes.forEach(n => { n.style.opacity = ''; n.classList.remove('fly'); });
@@ -2417,7 +2787,7 @@ function newGame(opts){
   }, 30 + n * 34));
 }
 function requestNew(daily, btn, event){
-  const b = btn || (daily ? el('btn-daily') : el('btn-new'));
+  const b = btn || (daily ? el('m-daily') : el('btn-new'));
   if (daily && dailyPending){
     /* On ne lance pas le défi avant de savoir quelle donne servir : sinon deux
        joueurs ne joueraient pas la même. */
@@ -2531,6 +2901,7 @@ function solverWorker(){
   } catch (e) { swDead = true; return null; }
   SW.onmessage = ev => {
     if (ev.data.job === 'pos') onLossVerdict(ev.data);
+    else if (ev.data.job === 'hint') onHintAnswer(ev.data);
     else onDailyResult(ev.data);
   };
   SW.onerror = () => {
@@ -2538,6 +2909,9 @@ function solverWorker(){
     try { SW.terminate(); } catch (e) {}
     SW = null;
     if (dailyPending){ dailyOff = -1; dailyPending = false; onDailyReady(); }
+    /* Le solveur mort, l'indice retombe sur l'heuristique plutôt que de laisser
+       le bouton en attente pour toujours. */
+    if (hintBusy) hintDone(hintFromGuess());
   };
   return SW;
 }
@@ -2778,7 +3152,7 @@ el('cos-backs').addEventListener('click', pickCos);
    événement elle redonne une donne d'événement. Sortir de l'événement se fait
    par le menu, où Nouvelle partie reste une partie ordinaire. */
 el('btn-new').onclick = () => requestNew(false, null, !!(S && S.event));
-el('btn-daily').onclick = () => requestNew(true);
+el('btn-hint').onclick = askHint;
 /* Rejouer veut dire « les mêmes cartes », pour un défi du jour comme pour une
    partie ordinaire — il voulait dire les deux à la fois. Une donne neuve reste
    à une touche, sur le dock comme dans le menu. Sans graine (sauvegarde
@@ -2952,7 +3326,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.7.6';
+window.APP_VERSION = '1.8.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
