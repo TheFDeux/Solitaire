@@ -171,6 +171,16 @@ body{
          letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
 .gauge i{display:block;font-style:normal;font-size:9.5px;font-weight:500;
          letter-spacing:.02em;color:rgba(255,255,255,.5);text-transform:uppercase}
+/* Le compteur de tickets n'apparaît que pendant un événement. */
+.gauge div[hidden]{display:none}
+.gauge .tk b{color:#7BE3A0}
+/* Une prise se voit dans le compteur autant que sur le plateau. */
+.gauge .tk.pop b{animation:tkPop .5s cubic-bezier(.22,1,.36,1)}
+@keyframes tkPop{
+  0%{transform:scale(1)}
+  38%{transform:scale(1.3)}
+  100%{transform:scale(1)}
+}
 
 /* ---------- boutons ---------- */
 .btn{
@@ -244,6 +254,60 @@ body{
   border:2px dashed rgba(196,250,214,.9)}
 .card.ticket .back svg{position:absolute;inset:0;margin:auto;width:34%;height:34%;
   fill:#C4FAD6;stroke:none}
+/* Une prise se fête : le carton bondit, tourne un peu, puis part en rétrécissant
+   tandis que l'étoile grandit. Rien que transform et opacity, les deux seules
+   propriétés que le compositeur sait animer sans repeindre — cinquante-deux
+   cartes à l'écran ne pardonnent pas une animation qui touche la mise en page.
+
+   L'animation vit sur .inner et non sur .back : .back porte overflow:hidden, qui
+   rognait l'étoile dès qu'elle dépassait le carton. .inner ne rogne rien, et
+   emporte le carton, sa découpe et son étoile d'un seul geste. Le rotateY(180deg)
+   doit être répété dans chaque étape, sinon la carte se retournerait face
+   visible au premier keyframe. */
+.card.ticket.won .inner{animation:tkWon .46s cubic-bezier(.22,1,.36,1) forwards}
+.card.ticket.won .back svg{animation:tkStar .46s cubic-bezier(.22,1,.36,1) forwards}
+@keyframes tkWon{
+  0%{transform:rotateY(180deg) scale(1) rotate(0deg);opacity:1}
+  26%{transform:rotateY(180deg) scale(1.24) rotate(-4deg);opacity:1}
+  100%{transform:rotateY(180deg) scale(.46) rotate(8deg);opacity:0}
+}
+@keyframes tkStar{
+  0%{transform:scale(1) rotate(0deg)}
+  100%{transform:scale(1.8) rotate(45deg)}
+}
+/* Un petit feu d'artifice à l'endroit de la prise. Treize étincelles, chacune
+   avec sa direction, son délai et sa durée en variables CSS : une seule règle
+   d'animation les sert toutes. Ni canvas, ni boucle d'images — elles naissent,
+   partent, et le noeud disparaît. transform et opacity uniquement, comme le
+   reste : rien qui touche la mise en page pendant qu'elles volent.
+
+   Le conteneur est un point sans dimension posé au centre du ticket, ce qui
+   laisse chaque étincelle partir de l'origine. .board porte contain:layout
+   style — pas paint — donc les étincelles peuvent dépasser du plateau. */
+.burst{position:absolute;top:0;left:0;width:0;height:0;z-index:6000;pointer-events:none}
+.burst i{position:absolute;top:0;left:0;width:var(--s);height:var(--s);
+  margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  border-radius:50%;background:var(--c);opacity:0;
+  /* le halo colore le fond sombre, le liseré sombre detache l'etincelle
+     d'une carte blanche : sans lui une etincelle claire disparait dessus */
+  box-shadow:0 0 9px var(--c),0 0 0 1px rgba(6,32,20,.5);
+  animation:tkSpark var(--d) cubic-bezier(.16,.85,.3,1) var(--t) forwards}
+.burst b{position:absolute;top:0;left:0;width:var(--fs);height:var(--fs);
+  margin:calc(var(--fs) / -2) 0 0 calc(var(--fs) / -2);
+  border-radius:50%;border:2px solid rgba(214,255,229,.95);opacity:0;
+  box-shadow:0 0 14px rgba(123,227,160,.85),inset 0 0 12px rgba(123,227,160,.55);
+  animation:tkFlash .4s ease-out forwards}
+@keyframes tkSpark{
+  0%{transform:translate3d(0,0,0) scale(.4);opacity:0}
+  12%{transform:translate3d(calc(var(--dx) * .18),calc(var(--dy) * .12),0) scale(1);opacity:1}
+  72%{opacity:.95}
+  100%{transform:translate3d(var(--dx),var(--dy),0) scale(.2);opacity:0}
+}
+@keyframes tkFlash{
+  0%{transform:scale(.18);opacity:0}
+  20%{transform:scale(.6);opacity:1}
+  100%{transform:scale(1.55);opacity:0}
+}
 .card[hidden]{display:none}
 .card:not(.down) .back{opacity:0}
 /* Les ombres sont exprimées en fraction de la carte, pas en pixels fixes. Un
@@ -629,6 +693,7 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
   <div class="gauge">
     <div><b id="v-time" aria-label="Temps écoulé">0:00</b><i>Temps</i></div>
     <div><b id="v-moves" aria-label="Coups joués">0</b><i>Coups</i></div>
+    <div class="tk" id="v-tickets-cell" hidden><b id="v-tickets" aria-label="Tickets récupérés">0/0</b><i>Tickets</i></div>
   </div>
 </header>
 
@@ -1211,6 +1276,9 @@ const activeEvent = () => {
 const eventById = id => EVENTS.find(e => e.id === id) || null;
 /* Les tickets prolongent la table des cartes, à partir de l'identifiant 52. */
 const TICKET0 = 52, TICKETS_MAX = 4;
+/* Nombre maximum de cartes au-dessus d'un ticket. Une seule définition, lue à
+   la donne comme en cours de partie. */
+const TICKET_COVER = 4;
 const isTicket = id => id >= TICKET0;
 /* Répartition des tickets. Colonnes 3 à 7 seulement — la première n'a aucune
    carte cachée et la deuxième une seule, un ticket à découvert dès la donne
@@ -1228,8 +1296,8 @@ function ticketPlan(ev, rand){
      autorisait six, et déterrer six cartes pour un seul ticket rendait la partie
      plus longue qu'amusante. Le ticket le plus profond se pose donc pile au
      plafond : il reste l'objectif de la donne sans en faire une corvée. */
-  const dk = pick(cols.filter(k => k >= 4));
-  out.push({ k:dk, i:dk - 4 });
+  const dk = pick(cols.filter(k => k >= TICKET_COVER));
+  out.push({ k:dk, i:dk - TICKET_COVER });
   const sk = pick(cols.filter(k => k !== dk));
   out.push({ k:sk, i:sk - 1 - Math.floor(rand() * Math.min(2, sk)) });
   let rest = cols.filter(k => k !== dk && k !== sk);
@@ -1237,7 +1305,7 @@ function ticketPlan(ev, rand){
     const k = pick(rest);
     rest = rest.filter(x => x !== k);
     /* Entre une et quatre cartes au-dessus, selon ce que la colonne permet. */
-    out.push({ k, i:k - 1 - Math.floor(rand() * Math.min(4, k)) });
+    out.push({ k, i:k - 1 - Math.floor(rand() * Math.min(TICKET_COVER, k)) });
   }
   return out;
 }
@@ -1395,7 +1463,7 @@ function buildSlots(){
 const blank = () => ({
   stock:[], waste:[], found:[[],[],[],[]], tab:[[],[],[],[],[],[],[]],
   up:new Array(56).fill(false), moves:0, draw:prefs.draw, seed:null, replay:false,
-  event:null
+  event:null, tickets:0
 });
 const pileOf = loc => loc.pile === 'tab' ? S.tab[loc.k]
                     : loc.pile === 'found' ? S.found[loc.k] : S[loc.pile];
@@ -1519,7 +1587,7 @@ function layout(){
   const liveTickets = new Set();
   for (let k = 0; k < 7; k++) for (const id of S.tab[k]) if (isTicket(id)) liveTickets.add(id);
   for (let t = 0; t < TICKETS_MAX; t++){
-    const id = TICKET0 + t, on = liveTickets.has(id);
+    const id = TICKET0 + t, on = liveTickets.has(id) || winning.has(id);
     if (lastTicketOn[id] !== on){ nodes[id].hidden = !on; lastTicketOn[id] = on; }
   }
   for (let id = 0; id < 56; id++){
@@ -1564,7 +1632,8 @@ const savePrefs = () => Store.set(K.prefs, prefs);
    ramasse et la partie ne pouvant plus se terminer. */
 const snapshot = () => JSON.stringify({
   stock:S.stock, waste:S.waste, found:S.found, tab:S.tab, up:S.up,
-  moves:S.moves, draw:S.draw, seed:S.seed, replay:S.replay, event:S.event
+  moves:S.moves, draw:S.draw, seed:S.seed, replay:S.replay, event:S.event,
+  tickets:S.tickets
 });
 function pushHistory(){ history.push(snapshot()); if (history.length > 200) history.shift(); }
 
@@ -1582,9 +1651,71 @@ function flipExposed(){
        carte qu'il couvrait se retourne à son tour. La boucle couvre le cas où un
        ticket en découvrirait un autre — les colonnes étant distinctes cela
        n'arrive pas, et une comparaison suffit à supprimer la question. */
-    while (p.length && cards[p[p.length-1]].ticket) p.pop();
+    while (p.length && cards[p[p.length-1]].ticket) celebrateTicket(p.pop());
     if (p.length && !S.up[p[p.length-1]]) S.up[p[p.length-1]] = true;
   }
+}
+/* Un ticket ramassé ne s'évapore pas : on le montre, il bondit, il part, et le
+   compteur du bandeau tressaille. layout() le laisse sur le plateau tant qu'il
+   est dans winning, sinon la carte serait masquée avant d'avoir bougé.
+
+   Le temps d'arrêt avant la fête n'est pas décoratif. Un ticket est caché sous
+   une carte jusqu'à l'instant où il est pris : sans ce délai il commencerait à
+   disparaître dans l'image même où il apparaît, et le joueur ne verrait qu'un
+   éclair vert à l'endroit d'une carte qui vient de partir. On le laisse d'abord
+   se poser, puis on le ramasse. */
+const TK_REST = 240, TK_FLY = 460;
+const winning = new Set();
+/* Le feu d'artifice de la prise. La position vient de pos[], le dernier endroit
+   où put() a posé la carte : le ticket ayant quitté sa colonne, plus rien ne le
+   déplace, donc la valeur reste juste. Les distances suivent la largeur de carte
+   pour que l'effet ait la même ampleur sur un téléphone et sur un écran large. */
+function burstAt(id){
+  const p = pos[id];
+  if (!p || !G.cw) return;
+  const b = document.createElement('div');
+  b.className = 'burst';
+  b.style.transform = `translate3d(${p.x + G.cw / 2}px,${p.y + G.ch / 2}px,0)`;
+  /* deux clairs pour le plateau sombre, deux soutenus pour les cartes blanches */
+  const cols = ['#FFD264', '#7BE3A0', '#FFFFFF', '#0E7A4E'];
+  const flash = document.createElement('b');
+  flash.style.setProperty('--fs', (G.cw * 1.15).toFixed(1) + 'px');
+  b.appendChild(flash);
+  const n = 16;
+  for (let i = 0; i < n; i++){
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+    const r = G.cw * (0.5 + Math.random() * 0.65);
+    const s = document.createElement('i');
+    /* une retombée légère : les étincelles finissent plus bas qu'elles partent */
+    s.style.setProperty('--dx', (Math.cos(a) * r).toFixed(1) + 'px');
+    s.style.setProperty('--dy', (Math.sin(a) * r + G.ch * 0.2).toFixed(1) + 'px');
+    s.style.setProperty('--c', cols[i % cols.length]);
+    s.style.setProperty('--s', (G.cw * (0.09 + Math.random() * 0.055)).toFixed(1) + 'px');
+    s.style.setProperty('--d', (430 + Math.random() * 230).toFixed(0) + 'ms');
+    s.style.setProperty('--t', (Math.random() * 70).toFixed(0) + 'ms');
+    b.appendChild(s);
+  }
+  board.appendChild(b);
+  setTimeout(() => b.remove(), 900);
+}
+function celebrateTicket(id){
+  haptic('strong');
+  if (REDUCED) return;
+  winning.add(id);
+  const n = nodes[id];
+  setTimeout(() => {
+    if (!winning.has(id)) return;
+    n.classList.add('won');
+    burstAt(id);
+  }, TK_REST);
+  const cell = el('v-tickets-cell');
+  cell.classList.remove('pop'); void cell.offsetWidth; cell.classList.add('pop');
+  setTimeout(() => cell.classList.remove('pop'), TK_REST + 520);
+  setTimeout(() => {
+    winning.delete(id);
+    n.classList.remove('won');
+    if (S) layout();
+  }, TK_REST + TK_FLY);
 }
 /* Les tickets ramassés ne sont pas comptés, ils se déduisent : ce sont ceux qui
    ne figurent plus dans le tableau. Une annulation les y remet, donc elle défait
@@ -1619,6 +1750,19 @@ function draw(){
   }
   S.moves++; haptic(); start(); layout(); update(); saveSoon(); scheduleLossCheck();
 }
+/* Le plafond de quatre cartes ne valait qu'à la donne : empiler pendant la
+   partie enfonçait le ticket plus profond, et le placement automatique le
+   faisait sans qu'on le lui demande. Le joueur garde ce droit — un glissé
+   volontaire passe toujours — mais le coup automatique ne creuse plus contre
+   lui. Renvoie le nombre de cartes qu'aurait le ticket le plus couvert. */
+function coverAfter(k, n){
+  const p = S.tab[k];
+  let worst = -1;
+  for (let i = 0; i < p.length; i++)
+    if (isTicket(p[i])) worst = Math.max(worst, p.length - 1 - i + n);
+  return worst;
+}
+const buriesTicket = (k, n) => coverAfter(k, n) > TICKET_COVER;
 function autoMove(id){
   const loc = locate(id);
   if (!loc || loc.pile === 'stock' || won) return;
@@ -1630,15 +1774,20 @@ function autoMove(id){
     group = S.tab[loc.k].slice(loc.i);
     if (!isSeq(group)) return;
   } else { if (!top) return; group = [id]; }
-  let empty = -1;
+  let empty = -1, spared = false;
   for (let k = 0; k < 7; k++){
     if (loc.pile === 'tab' && k === loc.k) continue;
     if (canTab(k, group[0])){
-      if (S.tab[k].length) return move(group, { type:'tab', k });
+      if (S.tab[k].length){
+        if (buriesTicket(k, group.length)){ spared = true; continue; }
+        return move(group, { type:'tab', k });
+      }
       if (empty < 0) empty = k;
     }
   }
-  if (empty >= 0 && !(loc.pile === 'tab' && loc.i === 0)) move(group, { type:'tab', k:empty });
+  if (empty >= 0 && !(loc.pile === 'tab' && loc.i === 0)) return move(group, { type:'tab', k:empty });
+  /* Sans un mot, le joueur croirait à une carte bloquée ou à une panne. */
+  if (spared) toast('Ce coup enterrerait un ticket. Faites glisser la carte si vous y tenez.', 3400);
 }
 
 /* ================= geste ================= */
@@ -1883,13 +2032,9 @@ function finish(){
   }
   tick();
 }
-/* Combien de tickets cette donne portait. Le tableau n'en contient plus à la fin
-   de la partie : on les recompte depuis la graine, qui les décrit. */
-function ticketCount(){
-  const ev = eventById(S.event);
-  if (!ev || typeof S.seed !== 'number') return 0;
-  return ticketPlan(ev, rng((S.seed ^ 0x9E3779B9) >>> 0)).length;
-}
+/* Combien de tickets cette donne portait. Enregistré à la distribution, donc
+   toujours d'accord avec le plateau même si le placement change de version. */
+const ticketCount = () => S && typeof S.tickets === 'number' ? S.tickets : 0;
 const saveEvt = () => Store.set(K.event, evt);
 /* Le niveau de la passe pour l'événement en cours. Une édition dont l'id ne
    correspond plus repart de zéro. */
@@ -2134,6 +2279,11 @@ function stopClock(){ running = false; clearInterval(timer); }
 function update(){
   el('v-moves').textContent = S ? S.moves : 0;
   el('v-time').textContent = fmt(seconds);
+  /* Le compteur de tickets ne vit que pendant un événement : c'est le seul
+     chiffre qui compte dans ce mode, et il n'a aucun sens ailleurs. */
+  const tk = !!(S && S.event && S.tickets > 0);
+  el('v-tickets-cell').hidden = !tk;
+  if (tk) el('v-tickets').textContent = `${S.tickets - ticketsLeft()}/${S.tickets}`;
   const complete = !S || S.found.every(f => f.length === 13);
   el('btn-finish').classList.toggle('show', !!S && !won && !complete && allUp());
   el('btn-undo').disabled = !history.length || won;
@@ -2225,6 +2375,11 @@ function newGame(opts){
   const slots = ev ? ticketPlan(ev, rng((S.seed ^ 0x9E3779B9) >>> 0))
                        .map((s, t) => ({ ...s, id:TICKET0 + t }))
                    : [];
+  /* Le nombre de tickets de la donne est enregistré, pas recalculé. Le recalculer
+     depuis la graine paraissait plus économe, mais le placement a déjà changé
+     entre deux versions : une partie sauvegardée aurait alors annoncé un total
+     qui ne correspondait plus à son plateau. */
+  S.tickets = slots.length;
   const deck = shuffle([...Array(52).keys()], rand);
   /* Un emplacement réservé à un ticket ne consomme pas de carte : celle qui
      l'aurait occupé reste dans le paquet et finit dans la pioche. Les
@@ -2322,6 +2477,10 @@ function restore(saved){
      qu'il faut rallonger sinon S.up[52] resterait indéfini. */
   if (typeof S.event !== 'string') S.event = null;
   while (S.up.length < 56) S.up.push(false);
+  /* Sauvegardes d'avant 1.7.3 : le total n'était pas enregistré. Ce qui reste
+     sur le plateau en est le meilleur substitut — il sous-estime si des tickets
+     avaient déjà été pris, mais il ne dépasse jamais. */
+  if (typeof S.tickets !== 'number') S.tickets = ticketsLeft();
   isDaily = !!saved.isDaily; dayKey = saved.dayKey || null;
   won = false; history = []; drag = null; stuckTold = false; dealing = false;
   lostTold = false; posReq++; clearTimeout(posT);
@@ -2793,7 +2952,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.7.2';
+window.APP_VERSION = '1.7.6';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
