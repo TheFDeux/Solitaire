@@ -892,8 +892,9 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
 
 <script id="sol-solver" type="text/plain">
 /* ==========================================================================
-   Solveur Klondike, exécuté dans un worker. Sert uniquement à garantir que la
-   donne du défi du jour est gagnable.
+   Solveur Klondike, exécuté dans un worker. Il garantit qu'une donne est
+   gagnable — celle du défi du jour, celle d'une partie ordinaire, celle d'une
+   donne d'événement — et sert aussi l'indice et la détection de partie perdue.
 
    Jeu « éclairé » : le solveur voit les cartes face cachée, ce qui est la
    définition usuelle d'une donne soluble. Il est borné en NOMBRE DE NŒUDS et
@@ -1144,6 +1145,25 @@ onmessage = e => {
                   dead: !r.win && !r.cut, nodes:r.nodes });
     return;
   }
+  if (d.job === 'seeds'){
+    /* Réserve de donnes gagnables, pour les parties ordinaires et les donnes
+       d'événement. Les plateaux arrivent CONSTRUITS par le script principal :
+       la donne vérifiée est alors littéralement celle qui sera jouée, et il n'y
+       a pas un deuxième distributeur à tenir en phase avec le premier.
+
+       On s'arrête au nombre demandé : chercher plus loin ferait attendre
+       l'indice, qui partage ce worker et répond, lui, à un joueur. */
+    const seeds = [];
+    for (let z = 0; z < d.deals.length; z++){
+      const c = d.deals[z];
+      if (solvable(c.deal, 3, d.budget, false).win){
+        seeds.push(c.seed);
+        if (seeds.length >= d.want) break;
+      }
+    }
+    postMessage({ job:'seeds', variant:d.variant, seeds, tried:d.deals.length });
+    return;
+  }
   /* Donne du jour : toujours vérifiée à trois cartes, le mode le plus
      exigeant, pour que tout le monde reçoive la même quel que soit son
      réglage. */
@@ -1205,7 +1225,7 @@ const Store = (() => {
 })();
 const K = { state:'sol.state.v1', stats:'sol.stats.v1', prefs:'sol.prefs.v1',
             seen:'sol.seen.v1', prog:'sol.prog.v1', daily:'sol.daily.v1',
-            event:'sol.event.v1' };
+            event:'sol.event.v1', pool:'sol.pool.v1' };
 /* Graine du défi du jour. Doit rester identique à celle du worker, sinon la
    donne vérifiée ne serait pas celle qui est jouée. */
 const dailySeed = (n, off) => (Math.imul(n, 2654435761) ^ Math.imul(off + 1, 40503)) >>> 0;
@@ -1340,25 +1360,31 @@ const eventById = id => EVENTS.find(e => e.id === id) || null;
 /* Les tickets prolongent la table des cartes, à partir de l'identifiant 52. */
 const TICKET0 = 52, TICKETS_MAX = 4;
 /* Nombre maximum de cartes au-dessus d'un ticket. Une seule définition, lue à
-   la donne comme en cours de partie. */
-const TICKET_COVER = 4;
+   la donne comme en cours de partie.
+
+   Quatre au départ, ramené à trois : le ticket le plus profond se posant pile
+   au plafond, plus d'un tiers des tickets se retrouvaient sous la pile
+   maximale, et l'événement demandait en moyenne 7,6 cartes déterrées par
+   donne. À trois, il en demande 6,3 et jamais plus de 11, sans que l'objectif
+   cesse d'en être un. */
+const TICKET_COVER = 3;
 const isTicket = id => id >= TICKET0;
 /* Répartition des tickets. Colonnes 3 à 7 seulement — la première n'a aucune
    carte cachée et la deuxième une seule, un ticket à découvert dès la donne
    n'étant pas un objectif. Une seule par colonne : deux tickets empilés se
    découvriraient d'un seul creusement. Et deux profondeurs garanties, un ticket
-   sous une ou deux cartes pour que la première prise arrive vite, un sous
-   quatre ou plus pour qu'il reste du travail. */
+   sous une ou deux cartes pour que la première prise arrive vite, un au plafond
+   pour qu'il reste du travail. */
 function ticketPlan(ev, rand){
   const pick = a => a[Math.floor(rand() * a.length)];
   const lo = ev.tickets[0], hi = ev.tickets[1];
   const n = lo + Math.floor(rand() * (hi - lo + 1));
   const cols = [2, 3, 4, 5, 6];
   const out = [];
-  /* Quatre cartes au-dessus d'un ticket, jamais plus. La septième colonne en
-     autorisait six, et déterrer six cartes pour un seul ticket rendait la partie
-     plus longue qu'amusante. Le ticket le plus profond se pose donc pile au
-     plafond : il reste l'objectif de la donne sans en faire une corvée. */
+  /* TICKET_COVER cartes au-dessus d'un ticket, jamais plus. La septième colonne
+     en autorisait six, et déterrer six cartes pour un seul ticket rendait la
+     partie plus longue qu'amusante. Le ticket le plus profond se pose donc pile
+     au plafond : il reste l'objectif de la donne sans en faire une corvée. */
   const dk = pick(cols.filter(k => k >= TICKET_COVER));
   out.push({ k:dk, i:dk - TICKET_COVER });
   const sk = pick(cols.filter(k => k !== dk));
@@ -1367,10 +1393,63 @@ function ticketPlan(ev, rand){
   while (out.length < n && rest.length){
     const k = pick(rest);
     rest = rest.filter(x => x !== k);
-    /* Entre une et quatre cartes au-dessus, selon ce que la colonne permet. */
+    /* Entre une et TICKET_COVER cartes au-dessus, selon ce que la colonne
+       permet. */
     out.push({ k, i:k - 1 - Math.floor(rand() * Math.min(TICKET_COVER, k)) });
   }
   return out;
+}
+/* Les tickets sortent d'un second flux tiré de la même graine, indépendant de
+   celui qui bat les cartes : la donne d'événement reste entièrement décrite par
+   son numéro, donc Recommencer et Rejouer fonctionnent dessus sans que rien de
+   plus soit enregistré. */
+function ticketSlots(ev, seed){
+  if (!ev) return [];
+  return ticketPlan(ev, rng((seed ^ 0x9E3779B9) >>> 0)).map((s, t) => ({ ...s, id:TICKET0 + t }));
+}
+/* Version de la DISTRIBUTION, à incrémenter dès que dealFrom, ticketPlan ou le
+   modèle du solveur changent. Les graines prouvées sont gardées d'une ouverture
+   à l'autre : sans ce numéro, une graine vérifiée par la version précédente
+   servirait une donne qui n'est plus la même, et la promesse « gagnable »
+   tomberait sans que rien ne le signale. */
+const DEAL_VERSION = 2;
+/* La donne, de sa graine à son plateau. UNE SEULE définition, appelée par la
+   partie qui démarre comme par la vérification qui la précède : la donne servie
+   est alors exactement celle que le solveur a prouvée, et non une deuxième
+   distribution qui lui ressemble.
+
+   Un emplacement réservé à un ticket ne consomme pas de carte : celle qui
+   l'aurait occupé reste dans le paquet et finit dans la pioche. Les
+   cinquante-deux cartes sont donc toujours là, et la pioche en compte n de plus.
+   Les profondeurs étant toutes inférieures à k, la carte visible au sommet d'une
+   colonne n'est jamais un ticket.
+
+   order est l'ordre de distribution, dont l'animation a besoin. */
+function dealFrom(seed, slots){
+  const deck = shuffle([...Array(52).keys()], rng(seed));
+  const tab = [[],[],[],[],[],[],[]], stock = [], order = [];
+  let i = 0;
+  for (let row = 0; row < 7; row++)
+    for (let k = row; k < 7; k++){
+      const t = slots.find(s => s.k === k && s.i === tab[k].length);
+      const id = t ? t.id : deck[i++];
+      tab[k].push(id); order.push(id);
+    }
+  for (; i < 52; i++) stock.push(deck[i]);
+  return { tab, stock, order };
+}
+/* La donne neuve telle que le solveur la voit. Même modèle que solverCols pour
+   une position en cours : les tickets sont retirés, et les cartes cachées
+   comptées SUR LA COLONNE FILTRÉE — un ticket découvert disparaît au lieu de
+   devenir une carte jouable, et l'identifiant 52 donnerait au solveur un as de
+   pique fantôme. */
+function dealForSolver(deal){
+  const tab = [], down = [];
+  for (let k = 0; k < 7; k++){
+    const col = deal.tab[k].filter(id => !isTicket(id));
+    tab.push(col); down.push(Math.max(0, col.length - 1));
+  }
+  return { tab, down, found:[0,0,0,0], stock:deal.stock.slice(), waste:[] };
 }
 function rng(seed){
   let a = seed >>> 0;
@@ -1836,7 +1915,7 @@ function draw(){
   }
   S.moves++; haptic(); start(); layout(); update(); saveSoon(); scheduleLossCheck();
 }
-/* Le plafond de quatre cartes ne valait qu'à la donne : empiler pendant la
+/* Le plafond ne valait qu'à la donne : empiler pendant la
    partie enfonçait le ticket plus profond, et le placement automatique le
    faisait sans qu'on le lui demande. Le joueur garde ce droit — un glissé
    volontaire passe toujours — mais le coup automatique ne creuse plus contre
@@ -2737,6 +2816,9 @@ function newGame(opts){
   stopCelebrate(); stopClock(); closeSheets(); hideMenu();
   seconds = 0; won = false; history = []; drag = null; stuckTold = false; litKey = null;
   lostTold = false; posReq++; clearTimeout(posT);
+  /* Une donne qui part remplace celle qu'on attendait : sans cet oubli, la
+     réserve ferait démarrer une seconde partie derrière celle-ci. */
+  poolWants = null;
   /* Les drapeaux à la main plutôt que cancelHint : son update() tomberait au
      milieu d'une remise à zéro, sur un état encore incomplet. */
   clearHint(); hintBusy = false; hintReq++; clearTimeout(hintWait); hintWait = null;
@@ -2754,17 +2836,6 @@ function newGame(opts){
      partie ordinaire : un numéro se lit et se dicte, les trente-deux bits de
      dailySeed non. */
   S.replay = !!o.replay;
-  if (isDaily){
-    const n = parseInt(dayKey.replace(/-/g, ''), 10);
-    S.seed = dailySeed(n, dailyOff > 0 ? dailyOff : 0);
-  } else {
-    S.seed = o.seed || (1 + Math.floor(Math.random() * 999999));
-  }
-  const rand = rng(S.seed);
-  /* Les tickets sortent d'un second flux tiré de la même graine, indépendant de
-     celui qui bat les cartes : la donne d'événement reste entièrement décrite
-     par son numéro, donc Recommencer et Rejouer fonctionnent dessus sans que
-     rien de plus soit enregistré. */
   const ev = o.event ? activeEvent() : null;
   S.event = ev ? ev.id : null;
   /* L'événement se joue à trois cartes, quel que soit le réglage. Chaque ticket
@@ -2772,28 +2843,27 @@ function newGame(opts){
      avant d'être un jeu. La préférence du joueur n'est pas touchée, seule cette
      donne l'ignore — et le tirage à trois rapporte l'XP plein. */
   if (S.event) S.draw = 3;
-  const slots = ev ? ticketPlan(ev, rng((S.seed ^ 0x9E3779B9) >>> 0))
-                       .map((s, t) => ({ ...s, id:TICKET0 + t }))
-                   : [];
+  if (isDaily){
+    const n = parseInt(dayKey.replace(/-/g, ''), 10);
+    S.seed = dailySeed(n, dailyOff > 0 ? dailyOff : 0);
+  } else {
+    /* Une graine reprise (Rejouer, Recommencer) a déjà servi : elle a été
+       vérifiée lorsqu'elle est sortie de la réserve. Une graine neuve vient de
+       la réserve, donc du solveur. Le tirage au hasard est le dernier recours :
+       worker indisponible, ou vérification qui n'a rien conclu. La donne est
+       alors servie telle quelle, et l'accueil ne promet plus rien. */
+    S.seed = o.seed || poolTake(ev) || (1 + Math.floor(Math.random() * 999999));
+  }
+  const slots = ticketSlots(ev, S.seed);
   /* Le nombre de tickets de la donne est enregistré, pas recalculé. Le recalculer
      depuis la graine paraissait plus économe, mais le placement a déjà changé
      entre deux versions : une partie sauvegardée aurait alors annoncé un total
      qui ne correspondait plus à son plateau. */
   S.tickets = slots.length;
-  const deck = shuffle([...Array(52).keys()], rand);
-  /* Un emplacement réservé à un ticket ne consomme pas de carte : celle qui
-     l'aurait occupé reste dans le paquet et finit dans la pioche. Les
-     cinquante-deux cartes sont donc toujours là, et la pioche en compte n de
-     plus. Les profondeurs étant toutes inférieures à k, la carte visible au
-     sommet d'une colonne n'est jamais un ticket. */
-  let i = 0; const order = [];
-  for (let row = 0; row < 7; row++)
-    for (let k = row; k < 7; k++){
-      const t = slots.find(s => s.k === k && s.i === S.tab[k].length);
-      const id = t ? t.id : deck[i++];
-      S.tab[k].push(id); order.push(id);
-    }
-  for (; i < 52; i++){ S.stock.push(deck[i]); dealt.add(deck[i]); }
+  const deal = dealFrom(S.seed, slots);
+  S.tab = deal.tab;
+  const order = deal.order;
+  for (const id of deal.stock){ S.stock.push(id); dealt.add(id); }
 
   geometry(); layout(); update(); Store.del(K.state);
   if (tipPending){
@@ -2824,6 +2894,23 @@ function requestNew(daily, btn, event){
     dailyWantsStart = true;
     toast('La donne du jour est en cours de vérification. Elle part dès qu’elle est prête.', 3600);
     return;
+  }
+  if (!daily){
+    /* Réserve vide : on ne distribue pas avant d'avoir une donne prouvée
+       gagnable, c'est toute la promesse. L'attente ne dure que le temps d'une
+       vérification, et la partie repart d'elle-même. La confirmation d'abandon
+       vient après, sur le second toucher : une partie en cours n'est jamais
+       sacrifiée pour une donne qui n'est pas encore prête. */
+    const ev = event ? activeEvent() : null;
+    if (!poolReady(ev)){
+      const key = poolKey(ev);
+      if (poolFillKey(key, true) || poolOf(key).busy){
+        poolWants = { key, event:!!event, btn:b };
+        toast('Vérification d’une donne gagnable. La partie part dès qu’elle est prête.', 3600);
+        renderMenu();
+        return;
+      }
+    }
   }
   const risky = S && !won && S.moves > 0 && !dealing;
   const go = () => {
@@ -2932,6 +3019,7 @@ function solverWorker(){
   SW.onmessage = ev => {
     if (ev.data.job === 'pos') onLossVerdict(ev.data);
     else if (ev.data.job === 'hint') onHintAnswer(ev.data);
+    else if (ev.data.job === 'seeds') onSeedsResult(ev.data);
     else onDailyResult(ev.data);
   };
   SW.onerror = () => {
@@ -2942,6 +3030,13 @@ function solverWorker(){
     /* Le solveur mort, l'indice retombe sur l'heuristique plutôt que de laisser
        le bouton en attente pour toujours. */
     if (hintBusy) hintDone(hintFromGuess());
+    /* Et la réserve ne se remplira plus : la partie qui attendait une donne
+       prouvée part sur une donne quelconque, plutôt que de ne jamais partir. */
+    pools.forEach(p => { p.busy = false; });
+    if (poolWants){
+      const req = poolWants; poolWants = null;
+      requestNew(false, req.btn, req.event);
+    }
   };
   return SW;
 }
@@ -2971,6 +3066,120 @@ function onDailyReady(){
     if (menuOpen || !S) requestNew(true, el('m-daily'));
     else toast('La donne du jour est prête.', 2600);
   }
+}
+
+/* ================= réserve de donnes gagnables =================
+   Le défi du jour n'est pas seul à être garanti : une partie ordinaire et une
+   donne d'événement sortent aussi d'une graine que le solveur a menée au bout.
+
+   La vérification ne tient pas dans le geste du joueur — une donne gagnable
+   demande trois graines en moyenne, et chacune quelques dizaines de
+   millisecondes — on la fait donc D'AVANCE, et on garde des graines prêtes.
+   Toucher « Nouvelle partie » ne déclenche une attente que si la réserve est
+   vide, et la partie part alors d'elle-même dès qu'une graine est prouvée.
+
+   Vérifiées à trois cartes, comme la donne du jour, et cela suffit pour les
+   deux réglages : une ligne gagnante à trois se rejoue telle quelle à une
+   carte, en piochant trois fois de suite au lieu d'une, la pioche et le talon
+   se retrouvant dans le même état. La réciproque est fausse, d'où le sens de
+   la vérification.
+
+   Les tickets font partie de la donne vérifiée : ils déplacent des cartes du
+   tableau vers la pioche, donc une graine prouvée sans eux ne dirait rien de
+   la même graine avec. Chaque variante a sa réserve.
+
+   Le solveur est conservateur : il refuse des donnes pourtant solubles. Sans
+   conséquence ici, on passe simplement à la graine suivante — mais les donnes
+   servies sont, de ce fait, plutôt les plus accessibles.
+   =============================================================== */
+const POOL_KEEP = 3;      /* graines d'avance, par variante */
+const POOL_CHUNK = 4;     /* graines proposées au worker en un envoi */
+const POOL_GIVEUP = 6;    /* envois vides d'affilée avant de jouer non vérifié */
+const pools = new Map();
+let poolWants = null;     /* partie en attente d'une graine prouvée */
+const poolKey = ev => (ev && ev.id) || 'plain';
+function poolOf(key){
+  let p = pools.get(key);
+  if (!p){ p = { ready:[], busy:false, empty:0 }; pools.set(key, p); }
+  return p;
+}
+const poolReady = ev => poolOf(poolKey(ev)).ready.length > 0;
+/* Sort une graine prouvée, et relance aussitôt la recherche pour la suivante :
+   la réserve se reconstitue pendant que la partie se joue. */
+function poolTake(ev){
+  const p = poolOf(poolKey(ev));
+  const seed = p.ready.shift();
+  p.empty = 0;
+  /* Une graine servie sort de la réserve enregistrée : sans cela, la même donne
+     reviendrait à la prochaine ouverture. */
+  if (seed) savePool();
+  poolFill(ev);
+  return seed || null;
+}
+const poolFill = ev => poolFillKey(poolKey(ev));
+/* Renvoie vrai si un envoi est parti, c'est-à-dire s'il y a lieu d'attendre.
+
+   urgent : une partie attend cette graine. Un remplissage d'avance, lui, laisse
+   passer l'indice — le worker est unique, et l'indice n'a que trois secondes
+   avant de retomber sur son heuristique. En pratique le cas ne se présente
+   guère : le remplissage part avec la distribution, pendant laquelle le bouton
+   d'indice ne répond pas. */
+function poolFillKey(key, urgent){
+  const p = poolOf(key);
+  if (p.busy || p.ready.length >= POOL_KEEP || p.empty >= POOL_GIVEUP) return false;
+  if (!urgent && hintBusy){ setTimeout(() => poolFillKey(key), 600); return false; }
+  const ev = key === 'plain' ? null : eventById(key);
+  if (key !== 'plain' && !ev) return false;   /* événement fermé depuis */
+  const w = solverWorker();
+  if (!w) return false;
+  /* Des envois courts, plutôt qu'une longue recherche : le worker est partagé
+     avec l'indice, qui répond à un joueur et passe donc devant. */
+  const deals = [];
+  for (let n = 0; n < POOL_CHUNK; n++){
+    const seed = 1 + Math.floor(Math.random() * 999999);
+    deals.push({ seed, deal:dealForSolver(dealFrom(seed, ticketSlots(ev, seed))) });
+  }
+  p.busy = true;
+  w.postMessage({ job:'seeds', variant:key, want:POOL_KEEP - p.ready.length,
+                  budget:SOLVE_BUDGET, deals });
+  return true;
+}
+/* La réserve survit à la fermeture de l'app : les graines déjà prouvées n'ont
+   pas à l'être une deuxième fois. Une ouverture à froid part donc avec une
+   donne prête, sans faire tourner le solveur ni la batterie. */
+function savePool(){
+  const seeds = {};
+  pools.forEach((p, key) => { if (p.ready.length) seeds[key] = p.ready.slice(0, POOL_KEEP); });
+  Store.set(K.pool, { v:DEAL_VERSION, seeds });
+}
+/* Ce que le stockage rend n'est pas cru sur parole : une graine hors bornes ne
+   décrirait aucune donne, et un événement clos n'a plus de variante. */
+function loadPool(saved){
+  if (!saved || saved.v !== DEAL_VERSION || !saved.seeds) return;
+  for (const key of Object.keys(saved.seeds)){
+    if (key !== 'plain' && !eventById(key)) continue;
+    const good = (saved.seeds[key] || [])
+      .filter(n => Number.isInteger(n) && n >= 1 && n <= 999999);
+    if (good.length) poolOf(key).ready = good.slice(0, POOL_KEEP);
+  }
+}
+function onSeedsResult(data){
+  const p = poolOf(data.variant);
+  p.busy = false;
+  for (const seed of data.seeds) p.ready.push(seed);
+  p.empty = data.seeds.length ? 0 : p.empty + 1;
+  if (data.seeds.length) savePool();
+  renderMenu();
+  /* La partie qui attendait part d'elle-même. Après POOL_GIVEUP envois sans
+     rien trouver, on la laisse partir sur une donne non vérifiée : mieux vaut
+     une donne quelconque qu'un bouton qui ne répond plus. */
+  if (poolWants && poolWants.key === data.variant
+      && (p.ready.length || p.empty >= POOL_GIVEUP)){
+    const req = poolWants; poolWants = null;
+    requestNew(false, req.btn, req.event);
+    return;
+  }
+  poolFillKey(data.variant);
 }
 
 /* ================= menu d'accueil ================= */
@@ -3047,9 +3256,11 @@ function renderMenu(){
     el('m-resume-sub').textContent =
       `${fmt(seconds)} · ${S.moves} coups · ${placed} carte${placed > 1 ? 's' : ''} sur 52`;
   }
+  /* Même honnêteté que pour le défi : « gagnable » ne s'affiche que si une
+     graine prouvée attend dans la réserve. */
   el('m-new-sub').textContent = live
     ? 'Abandonne la partie en cours'
-    : `Tirage à ${prefs.draw === 1 ? 'une carte' : 'trois cartes'} · ${xpRateLabel(prefs.draw)}`;
+    : `${poolReady(null) ? 'Donne gagnable' : 'Vérification…'} · tirage à ${prefs.draw === 1 ? 'une carte' : 'trois cartes'} · ${xpRateLabel(prefs.draw)}`;
   const d = stats.daily[todayKey()];
   el('m-daily').classList.toggle('done', !!d);
   el('m-daily').disabled = dailyPending;
@@ -3317,9 +3528,10 @@ new ResizeObserver(() => {
 /* ================= démarrage ================= */
 (async function boot(){
   buildCards(); buildSlots();
-  const [p, st, saved, seen, pr, dy, ec] = await Promise.all([
+  const [p, st, saved, seen, pr, dy, ec, pl] = await Promise.all([
     Store.get(K.prefs), Store.get(K.stats), Store.get(K.state),
-    Store.get(K.seen), Store.get(K.prog), Store.get(K.daily), Store.get(K.event)
+    Store.get(K.seen), Store.get(K.prog), Store.get(K.daily), Store.get(K.event),
+    Store.get(K.pool)
   ]);
   if (p) prefs = Object.assign(prefs, p);
   if (st) stats = Object.assign(stats, st, { daily: st.daily || {} });
@@ -3353,15 +3565,23 @@ new ResizeObserver(() => {
   tipPending = !seen;
   goHome();
 
-  /* La vérification de la donne du jour part en arrière-plan, dans un worker,
-     pendant que le joueur lit l'accueil. Le résultat de la veille ne sert à
-     rien : on ne le réutilise que s'il porte sur aujourd'hui. */
+  /* Les vérifications partent en arrière-plan, dans un worker, pendant que le
+     joueur lit l'accueil.
+
+     La réserve de donnes gagnables passe devant la donne du jour : « Nouvelle
+     partie » est le bouton principal, il n'a pas à attendre la fin d'une
+     recherche qui ne le concerne pas. Le résultat de la veille ne sert à rien :
+     on ne réutilise la donne du jour que si elle porte sur aujourd'hui. */
+  loadPool(pl);
+  poolFill(null);
   if (dy && dy.day === todayKey() && typeof dy.off === 'number'){
     dailyOff = dy.off; renderMenu();
   } else {
     startDailySearch();
     renderMenu();
   }
+  const ev0 = activeEvent();
+  if (ev0) poolFill(ev0);
 })();
 
 })();
@@ -3369,7 +3589,7 @@ new ResizeObserver(() => {
 
 <script>
 /* --- version, service worker --- */
-window.APP_VERSION = '1.8.2';
+window.APP_VERSION = '1.9.0';
 addEventListener('load', () => {
   const n = document.getElementById('version-note');
   if (n) n.textContent = 'Version ' + window.APP_VERSION;
