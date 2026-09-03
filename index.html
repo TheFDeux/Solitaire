@@ -39,6 +39,19 @@
   --o1:.50; --o2:.40; --o3:.28;
   --back1:#7A5CFF; --back2:#3B7BFF; --back3:#25C2F0;
   --accent:#0A84FF;
+
+  /* La composition du fond vit ici et non dans .bg i : c'etait trois radiales
+     ecrites en dur, donc tous les themes avaient forcement la meme geometrie
+     et ne pouvaient differer que par la couleur. Un theme peut maintenant
+     remplacer la composition entiere. Les themes qui ne disent rien heritent
+     de ces trois halos et ne bougent pas d'un pixel.
+
+     Tout reste peint une fois : conique ou radial, le cout est le meme et
+     aucun filter n'entre dans l'affaire. */
+  --halos:
+    radial-gradient(72% 52% at 16% 20%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 72%),
+    radial-gradient(64% 46% at 88% 12%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 70%),
+    radial-gradient(78% 54% at 56% 94%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 72%);
 }
 [data-theme="minuit"]{
   --bg-rgb:5,8,20;
@@ -100,6 +113,89 @@
   --back1:#1E5490; --back2:#2A7DB8; --back3:#E9DCA0;
   --accent:#2E8BC9;
 }
+/* Themes du haut de l'echelle. Ceux-la redefinissent --halos : c'est tout
+   l'interet, la geometrie du fond change et pas seulement sa teinte.
+
+   Deux regles tenues partout ici. --g1..3 sont des triplets R,G,B et non des
+   hex, parce qu'ils passent dans rgba(var(--g1),var(--o1)) et qu'un hex y
+   produirait du vide sans rien signaler. Et --accent porte du texte blanc :
+   une teinte trop claire y devient illisible, ce qui interdit le jaune
+   d'Orage en accent — il reste dans l'eclair, l'accent prend le violet. */
+[data-theme="recif"]{
+  --bg-rgb:3,17,22;
+  --g1:20,184,166; --g2:251,146,60; --g3:67,56,202;
+  --o1:.46; --o2:.32; --o3:.48;
+  --back1:#14B8A6; --back2:#0E7490; --back3:#5EEAD4;
+  --accent:#14B8A6;
+  /* Quatre taches de tailles franchement inegales : rien ne se repond, et le
+     fond cesse de paraitre construit autour d'un axe. */
+  --halos:
+    radial-gradient(52% 34% at 20% 26%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 60%),
+    radial-gradient(38% 26% at 62% 12%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 56%),
+    radial-gradient(96% 64% at 88% 78%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 70%),
+    radial-gradient(40% 28% at 12% 88%, rgba(var(--g1),.38) 0%, rgba(var(--g1),0) 58%);
+}
+[data-theme="agrume"]{
+  --bg-rgb:20,10,4;
+  --g1:255,122,26; --g2:190,242,60; --g3:255,61,124;
+  --o1:.50; --o2:.34; --o3:.40;
+  --back1:#F97316; --back2:#EC4899; --back3:#BEF264;
+  --accent:#FF7A1A;
+  /* Le vert reste bas en opacite : monte plus haut, il verdit les cartes
+     blanches posees dessus. */
+  --halos:
+    radial-gradient(58% 38% at 12% 16%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 62%),
+    radial-gradient(92% 60% at 100% 6%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 66%),
+    radial-gradient(44% 30% at 70% 44%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 58%),
+    radial-gradient(70% 46% at 34% 100%, rgba(var(--g1),.34) 0%, rgba(var(--g1),0) 64%);
+}
+[data-theme="neon"]{
+  --bg-rgb:8,4,20;
+  --g1:255,42,158; --g2:0,229,255; --g3:124,58,237;
+  --o1:.52; --o2:.42; --o3:.46;
+  --back1:#7C3AED; --back2:#C026D3; --back3:#22D3EE;
+  --accent:#FF2A9E;
+  /* Les halos sont pousses dans les angles, et un balayage conique tres bas
+     en opacite ferme le cercle des trois teintes. A .10 il ne se voit pas
+     comme un motif : il empeche seulement le fond de retomber au noir entre
+     les halos. */
+  --halos:
+    radial-gradient(70% 48% at 8% 8%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 66%),
+    radial-gradient(66% 46% at 96% 22%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 64%),
+    radial-gradient(84% 52% at 50% 104%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 70%),
+    conic-gradient(from 210deg at 50% 60%,
+      rgba(255,42,158,.10) 0deg, rgba(0,229,255,.10) 140deg,
+      rgba(124,58,237,.10) 260deg, rgba(255,42,158,.10) 360deg);
+}
+[data-theme="orage"]{
+  --bg-rgb:11,7,24;
+  --g1:250,204,21; --g2:139,92,246; --g3:59,7,100;
+  --o1:.30; --o2:.50; --o3:.60;
+  --back1:#8B5CF6; --back2:#6D28D9; --back3:#FACC15;
+  --accent:#8B5CF6;
+  /* L'eclair est un seul halo etire a 120 % de large sur 22 % de haut. Une
+     ellipse aussi plate ne ressemble plus a un halo, et c'est le but. */
+  --halos:
+    radial-gradient(120% 22% at 30% 40%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 48%),
+    radial-gradient(70% 50% at 88% 8%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 66%),
+    radial-gradient(90% 60% at 10% 96%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 72%);
+}
+[data-theme="holo"]{
+  --bg-rgb:14,14,18;
+  --g1:168,85,247; --g2:56,189,248; --g3:251,113,133;
+  --o1:.30; --o2:.28; --o3:.26;
+  --back1:#38BDF8; --back2:#A855F7; --back3:#FB7185;
+  --accent:#A855F7;
+  /* Un balayage conique complet, six teintes qui reviennent a la premiere
+     pour qu'aucune couture ne se voie. Tenu sous .30 : au-dela, la table
+     entre en concurrence avec les cartes et on ne lit plus la partie. */
+  --halos:
+    conic-gradient(from 40deg at 42% 34%,
+      rgba(56,189,248,.30) 0deg, rgba(168,85,247,.30) 72deg,
+      rgba(251,113,133,.28) 144deg, rgba(253,224,71,.24) 216deg,
+      rgba(74,222,128,.26) 288deg, rgba(56,189,248,.30) 360deg),
+    radial-gradient(80% 55% at 78% 88%, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 62%);
+}
 
 *{box-sizing:border-box;margin:0;padding:0}
 html{height:100%;background:rgb(var(--bg-rgb))}
@@ -125,10 +221,7 @@ body{
     background:rgb(var(--bg-rgb));transition:background .45s ease}
 .bg i{
   position:absolute;inset:-14%;display:block;
-  background:
-    radial-gradient(72% 52% at 16% 20%, rgba(var(--g1),var(--o1)) 0%, rgba(var(--g1),0) 72%),
-    radial-gradient(64% 46% at 88% 12%, rgba(var(--g2),var(--o2)) 0%, rgba(var(--g2),0) 70%),
-    radial-gradient(78% 54% at 56% 94%, rgba(var(--g3),var(--o3)) 0%, rgba(var(--g3),0) 72%);
+  background:var(--halos);
   transition:background .45s ease;
 }
 .bg::after{
@@ -866,7 +959,7 @@ body.home .hud,body.home .table,body.home .dock{opacity:0;pointer-events:none}
   <h3>Cosmétiques</h3>
   <p class="sub" id="cos-sub"></p>
   <div class="cos-sec">
-    <h4>Thème de table</h4>
+    <h4>Thème</h4>
     <div class="cos-grid" id="cos-themes"></div>
   </div>
   <div class="cos-sec">
@@ -1296,6 +1389,15 @@ const THEMES = [
   { id:'menthe',     name:'Menthe',     lvl:10, css:'linear-gradient(135deg,#0FA36B,#12B5C9 55%,#7BD389)' },
   { id:'crepuscule', name:'Crépuscule', lvl:16, css:'linear-gradient(135deg,#F0592B,#C0298C 55%,#FFB347)' },
   { id:'ardoise',    name:'Ardoise',    lvl:24, css:'linear-gradient(135deg,#3A4152,#5A6478 55%,#8B94A8)' },
+  /* Le haut de l'échelle. Ces cinq-là redéfinissent --halos dans leur bloc :
+     la géométrie du fond change, pas seulement la teinte. Les paliers
+     continuent d'alterner avec ceux des dos pour qu'aucun niveau ne soit
+     vide, comme le veut la note sur la progression. */
+  { id:'recif', name:'Récif', lvl:30, css:'linear-gradient(135deg,#14B8A6,#4338CA 55%,#FB923C)' },
+  { id:'agrume', name:'Agrume', lvl:35, css:'linear-gradient(135deg,#FF7A1A,#FF3D7C 52%,#BEF264)' },
+  { id:'neon', name:'Néon', lvl:41, css:'linear-gradient(135deg,#FF2A9E,#7C3AED 52%,#00E5FF)' },
+  { id:'orage', name:'Orage', lvl:47, css:'linear-gradient(135deg,#3B0764,#8B5CF6 55%,#FACC15)' },
+  { id:'holo', name:'Holographique', lvl:53, css:'linear-gradient(135deg,#38BDF8,#A855F7 40%,#FB7185 70%,#FDE047)' },
   /* Cosmétiques d'événement. Le palier 999 est hors d'atteinte par le niveau :
      la seule porte d'entrée est prog.granted, où la passe les pousse. unlocked()
      n'a donc pas à changer, et ce qui a été gagné reste acquis après la
@@ -1317,10 +1419,42 @@ const BACKS = [
   { id:'quadrillage', name:'Quadrillage', lvl:13, dot:0,
     img:`repeating-linear-gradient(0deg,${L1}.13) 0 1px,${L1}0) 1px 12%),`
        +`repeating-linear-gradient(90deg,${L1}.13) 0 1px,${L1}0) 1px 17%)` },
-  { id:'rosace', name:'Rosace', lvl:20, dot:1,
-    img:`conic-gradient(from 0deg at 50% 50%,${L1}.17) 0 6deg,${L1}0) 6deg 30deg)` },
+  /* Le niveau 20 n'a plus de dos : Rosace y vivait et a été retiré. Son motif
+     était un conic-gradient non répétant dont les arrêts ne couvraient que
+     30 degrés — le dernier filait donc jusqu'à 360 et la carte ne portait
+     qu'un seul éclat de travers au lieu d'une rosace. Le palier reste libre
+     pour ce qui viendra. */
   { id:'or', name:'Feuille d’or', lvl:28, dot:1, cols:['#7A5A1E','#D9B45B','#F6E9B8'],
     img:`repeating-linear-gradient(45deg,${L1}.18) 0 1px,${L1}0) 1px 9%)` },
+  /* Les nouveaux dos. Tourbillon et Ruban n'ont VOLONTAIREMENT pas de cols :
+     leur motif est du blanc sur la base, ils se recolorent donc avec le thème
+     choisi comme le font Halo, Losanges, Ondes et Quadrillage. Sans
+     cela les dos à palette propre passeraient en majorité et plus rien dans
+     la collection ne s'accorderait à la table.
+
+     Pastilles et Néon gardent leur palette : des pastilles multicolores et
+     deux floraisons cyan/magenta ne veulent rien dire repeintes en vert. */
+  { id:'tourbillon', name:'Tourbillon', lvl:38, dot:0,
+    img:`repeating-conic-gradient(from 12deg at 44% 42%,${L1}.15) 0 9deg,${L1}0) 9deg 18deg),`
+       +`repeating-radial-gradient(circle at 56% 58%,${L1}.11) 0 1.5px,${L1}0) 1.5px 9%)` },
+  { id:'ruban', name:'Ruban', lvl:44, dot:0,
+    img:`repeating-linear-gradient(62deg,${L1}.18) 0 4%,${L1}0) 4% 11%),`
+       +`repeating-linear-gradient(-62deg,rgba(0,0,0,.20) 0 4%,rgba(0,0,0,0) 4% 11%)` },
+  { id:'pastilles', name:'Pastilles', lvl:50, dot:0, cols:['#12233F','#1E4E8A','#63B8F0'],
+    img:`radial-gradient(circle at 22% 18%,rgba(255,214,102,.85) 0 8%,rgba(255,214,102,0) 8.5%),`
+       +`radial-gradient(circle at 68% 28%,rgba(255,120,170,.8) 0 5.5%,rgba(255,120,170,0) 6%),`
+       +`radial-gradient(circle at 38% 52%,rgba(120,240,200,.8) 0 6.5%,rgba(120,240,200,0) 7%),`
+       +`radial-gradient(circle at 80% 62%,rgba(255,214,102,.7) 0 4.5%,rgba(255,214,102,0) 5%),`
+       +`radial-gradient(circle at 26% 82%,rgba(160,150,255,.85) 0 7%,rgba(160,150,255,0) 7.5%),`
+       +`radial-gradient(circle at 62% 88%,rgba(120,240,200,.65) 0 4%,rgba(120,240,200,0) 4.5%)` },
+  /* « Lueur » et non « Néon » : prog.granted est une seule liste d'identifiants
+     pour les deux pistes, donc un id partagé entre un thème et un dos
+     débloquerait les deux d'un coup, et renderPass résoudrait l'id sur la
+     mauvaise piste. Les identifiants sont uniques toutes pistes confondues. */
+  { id:'lueur', name:'Lueur', lvl:56, dot:1, cols:['#1A0B2E','#3B1178','#8A2BE2'],
+    img:`radial-gradient(120% 90% at 18% 12%,rgba(0,240,255,.42) 0%,rgba(0,240,255,0) 55%),`
+       +`radial-gradient(110% 80% at 88% 92%,rgba(255,60,180,.45) 0%,rgba(255,60,180,0) 58%),`
+       +`repeating-linear-gradient(75deg,${L1}.14) 0 1px,${L1}0) 1px 22%)` },
   /* Dos d'événement, même principe : palier hors d'atteinte, entrée par
      prog.granted. Des motifs, pas des fichiers. */
   { id:'perfore', name:'Perforé', lvl:999, evt:true, dot:0, cols:['#8A6A1E','#D9B45B','#F6E9B8'],
@@ -3355,7 +3489,8 @@ function applyPrefs(){
   /* Le dos passe par des variables : un seul écrit habille les 52 cartes.
 
      Sur le PLATEAU, pas sur la racine. Les dos sans palette propre — Halo,
-     Losanges, Ondes, Quadrillage, Rosace — retombent sur var(--back1..3), et
+     Losanges, Ondes, Quadrillage, Tourbillon, Ruban — retombent sur
+     var(--back1..3), et
      les aperçus de la galerie lisent les mêmes variables. Écrites sur la
      racine, la palette du dos choisi les repeignait tous : Perforé sélectionné,
      l'aperçu de Halo passait à l'or de Perforé. Les cartes vivent toutes dans
