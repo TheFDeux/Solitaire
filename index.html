@@ -68,6 +68,38 @@
   --back1:#4A5264; --back2:#6B7488; --back3:#98A2B6;
   --accent:#8E9BB3;
 }
+/* Thèmes d'événement. Un dos d'événement porte sa palette dans sa propre
+   définition et n'a donc besoin de rien ici ; un thème, lui, n'est que cet
+   identifiant. Sans son bloc il reste sélectionnable et il s'enregistre, mais
+   la table retombe sur les variables d'Aurore et ne repeint rien : le joueur
+   voit sa vignette cochée et le plateau inchangé. Un thème ajouté à THEMES
+   s'ajoute donc TOUJOURS ici aussi.
+
+   Les trois halos reprennent exactement les stops du dégradé de l'aperçu : ce
+   que montre la galerie est ce que reçoit la table. Le troisième stop de
+   Guichet et de Lumières tire vers la crème, presque du blanc, et son opacité
+   descend donc plus bas qu'ailleurs — sinon le bas de l'écran se délave. */
+[data-theme="guichet"]{
+  --bg-rgb:20,15,6;
+  --g1:122,90,30; --g2:201,146,43; --g3:240,217,138;
+  --o1:.52; --o2:.42; --o3:.20;
+  --back1:#8F6A22; --back2:#C9922B; --back3:#EBD285;
+  --accent:#C9922B;
+}
+[data-theme="kermesse"]{
+  --bg-rgb:24,8,17;
+  --g1:179,36,92; --g2:226,100,60; --g3:245,194,78;
+  --o1:.50; --o2:.40; --o3:.24;
+  --back1:#C22A63; --back2:#E2643C; --back3:#F5C24E;
+  --accent:#E2643C;
+}
+[data-theme="lumieres"]{
+  --bg-rgb:5,11,24;
+  --g1:18,58,107; --g2:42,125,184; --g3:242,229,168;
+  --o1:.60; --o2:.44; --o3:.18;
+  --back1:#1E5490; --back2:#2A7DB8; --back3:#E9DCA0;
+  --accent:#2E8BC9;
+}
 
 *{box-sizing:border-box;margin:0;padding:0}
 html{height:100%;background:rgb(var(--bg-rgb))}
